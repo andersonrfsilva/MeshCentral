@@ -44,7 +44,9 @@ async function createMeshUserFixture(options) {
         getServerWarnings: function () { return []; },
         logError: function (e) { errors.push(e); }
     };
-    root.config.domains[domain.id] = {};
+    root.config.domains[domain.id] = domain;
+    Object.keys(options.extraDomains || {}).forEach(function (id) { root.config.domains[id] = options.extraDomains[id]; });
+    if (options.managecrossdomain) { root.config.settings.managecrossdomain = options.managecrossdomain; }
 
     const parent = {
         parent: root,

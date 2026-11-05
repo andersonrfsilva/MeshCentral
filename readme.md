@@ -25,6 +25,7 @@ For more information, [visit MeshCentral.com](https://meshcentral.com).
 
 ## Documentation
 Users may end their own multiplexed desktop sessions; ending another user's session requires remote-control rights on the node.
+User group cloning requires access to the source group's domain. Creating or cloning user groups across domains requires cross-domain administrator status (`managecrossdomain` in the server configuration).
 
 [New Searchable Documentation](https://ylianst.github.io/MeshCentral/) is available here and contains information every administrator should know including usage, the server configuration file, databases, TLS offloading, Let's Encrypt, IP Filtering, Email setup, embedding, server port aliasing, reverse proxy setup, multi factor authentication, branding & terms of use, HashiCorp Vault support, and SSO.
 

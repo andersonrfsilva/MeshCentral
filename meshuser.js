@@ -1639,12 +1639,17 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                         else if (common.validateString(command.name, 1, 64) == false) { err = "Invalid group name"; } // User group name is between 1 and 64 characters
                         else if ((command.desc != null) && (common.validateString(command.desc, 0, 1024) == false)) { err = "Invalid group description"; } // User group description is between 0 and 1024 characters
 
+                        // A requested domain must be configured and, unless we are a cross-domain administrator, be our own domain.
+                        if ((err == null) && (command.domain != null)) {
+                            if ((typeof command.domain != 'string') || (Object.prototype.hasOwnProperty.call(parent.parent.config.domains, command.domain) == false) || ((command.domain != domain.id) && (obj.crossDomain !== true))) { err = "Invalid domain"; }
+                        }
+
                         // If we are cloning from an existing user group, check that.
                         if (command.clone) {
                             if (common.validateString(command.clone, 1, 256) == false) { err = "Invalid clone groupid"; }
                             else {
                                 var clonesplit = command.clone.split('/');
-                                if ((clonesplit.length != 3) || (clonesplit[0] != 'ugrp') || ((command.domain == null) && (clonesplit[1] != domain.id))) { err = "Invalid clone groupid"; }
+                                if ((clonesplit.length != 3) || (clonesplit[0] != 'ugrp') || ((obj.crossDomain !== true) && (clonesplit[1] != domain.id))) { err = "Invalid clone groupid"; }
                                 else if (parent.userGroups[command.clone] == null) { err = "Invalid clone groupid"; }
                             }
 
