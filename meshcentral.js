@@ -4058,30 +4058,7 @@ function CreateMeshCentralServer(config, args) {
     // Decode a cookie back into an object using a key using AES256 / HMAC-SHA384. Return null if it's not a valid cookie. (key must be 80 bytes or more)
     // We do this because poor .NET does not support AES256-GCM.
     obj.decodeCookieAESSHA = function (cookie, key, timeout) {
-        try {
-            if (key == null) { key = obj.serverKey; }
-            if (key.length < 80) { return null; }
-            cookie = Buffer.from(cookie.replace(/\@/g, '+').replace(/\$/g, '/'), obj.args.cookieencoding ? obj.args.cookieencoding : 'base64');
-            const decipher = obj.crypto.createDecipheriv('aes-256-cbc', key.slice(48, 80), cookie.slice(0, 16));
-            const rawmsg = decipher.update(cookie.slice(16), 'binary', 'binary') + decipher.final('binary');
-            const hmac = obj.crypto.createHmac('sha384', key.slice(0, 48));
-            hmac.update(rawmsg.slice(48));
-            if (Buffer.compare(hmac.digest(), Buffer.from(rawmsg.slice(0, 48))) == false) { return null; }
-            const o = JSON.parse(rawmsg.slice(48).toString('utf8'));
-            if ((o.time == null) || (o.time == null) || (typeof o.time != 'number')) { obj.debug('cookie', 'ERR: Bad cookie due to invalid time'); return null; }
-            o.time = o.time * 1000; // Decode the cookie creation time
-            o.dtime = Date.now() - o.time; // Decode how long ago the cookie was created (in milliseconds)
-            if ((o.expire) == null || (typeof o.expire != 'number')) {
-                // Use a fixed cookie expire time
-                if (timeout == null) { timeout = 2; }
-                if ((o.dtime > (timeout * 60000)) || (o.dtime < -30000)) { obj.debug('cookie', 'ERR: Bad cookie due to timeout'); return null; } // The cookie is only valid 120 seconds, or 30 seconds back in time (in case other server's clock is not quite right)
-            } else {
-                // An expire time is included in the cookie (in minutes), use this.
-                if ((o.expire !== 0) && ((o.dtime > (o.expire * 60000)) || (o.dtime < -30000))) { obj.debug('cookie', 'ERR: Bad cookie due to timeout'); return null; } // The cookie is only valid 120 seconds, or 30 seconds back in time (in case other server's clock is not quite right)
-            }
-            obj.debug('cookie', 'Decoded AESSHA cookie: ' + JSON.stringify(o));
-            return o;
-        } catch (ex) { obj.debug('cookie', 'ERR: Bad AESSHA cookie due to exception: ' + ex); return null; }
+        return obj.common.decodeCookieAESSHA(cookie, (key == null) ? obj.serverKey : key, timeout, obj.args.cookieencoding, obj.debug);
     };
 
     // Debug
