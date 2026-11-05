@@ -499,8 +499,8 @@ module.exports.CreateMeshMail = function (parent, domain) {
                         setTimeout(sendNextMail, 10000);
                     } else {
                         // Failed, send the next mail
-                        parent.debug('email', 'SendGrid server failed (Skipping): ' + safeStringify(err));
-                        console.log('SendGrid server failed (Skipping): ' + safeStringify(err));
+                        parent.debug('email', 'SendGrid server failed (Skipping): ' + safeStringify(error));
+                        console.log('SendGrid server failed (Skipping): ' + safeStringify(error));
                         obj.pendingMails.shift();
                         obj.retry = 0;
                         sendNextMail();
