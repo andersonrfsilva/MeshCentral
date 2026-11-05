@@ -1096,7 +1096,11 @@ function CreateMeshRelayEx(parent, ws, req, domain, user, cookie) {
                     // Set nodeid and meshid
                     obj.nodeid = node._id;
                     obj.meshid = node.meshid;
+
+                    // Publishing/pairing must wait until node and protocol authorization pass.
+                    performRelay();
                 });
+                return obj;
             }
         }
     }
