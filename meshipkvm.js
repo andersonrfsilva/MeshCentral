@@ -987,7 +987,7 @@ function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
     const Net = require('net');
     const WebSocket = require('ws');
     const obj = {};
-    const tcpSockets = {}
+    const tcpSockets = new Set();
     obj.tcpServerPort = 0;
     obj.nodeid = nodeid;
     obj.targetHost = targetHost;
@@ -996,10 +996,10 @@ function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
     parent.parent.debug('relay', 'MiniRouter: Request relay for ' + obj.targetHost + ':' + obj.targetPort + ' thru ' + nodeid + '.');
 
     // Close a TCP socket and the coresponding web socket.
-    function closeTcpSocket(tcpSocket) {
-        if (tcpSockets[tcpSocket]) {
-            delete tcpSockets[tcpSocket];
-            try { tcpSocket.end(); } catch (ex) { console.log(ex); }
+    function closeTcpSocket(tcpSocket, force) {
+        if (tcpSockets.has(tcpSocket)) {
+            tcpSockets.delete(tcpSocket);
+            try { if (force) { tcpSocket.destroy(); } else { tcpSocket.end(); } } catch (ex) { console.log(ex); }
             if (tcpSocket.relaySocket) { try { tcpSocket.relaySocket.close(); } catch (ex) { console.log(ex); } }
             try { delete tcpSocket.relaySocket.tcpSocket; } catch (ex) { }
             try { delete tcpSocket.relaySocket; } catch (ex) { }
@@ -1021,7 +1021,7 @@ function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
             onReadyFunc(obj.tcpServerPort, obj);
         });
         obj.tcpServer.on('connection', function (socket) {
-            tcpSockets[socket] = 1;
+            tcpSockets.add(socket);
             socket.pause();
             socket.on('data', function (chunk) { // Make sure to handle flow control.
                 const f = function sendDone() { sendDone.tcpSocket.resume(); }
@@ -1072,7 +1072,7 @@ function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
 
     // Stop the looppback server and all relay sockets
     obj.stop = function () {
-        for (var tcpSocket in tcpSockets) { closeTcpSocket(tcpSocket); }
+        for (const tcpSocket of tcpSockets) { closeTcpSocket(tcpSocket, true); }
         obj.tcpServer.close();
         obj.tcpServer = null;
     }
