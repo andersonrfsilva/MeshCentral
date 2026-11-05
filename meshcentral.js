@@ -2542,14 +2542,14 @@ function CreateMeshCentralServer(config, args) {
             storeEvent.ids = ids;
             obj.db.StoreEvent(storeEvent);
         }
-        const targets = []; // List of targets we dispatched the event to, we don't want to dispatch to the same target twice.
+        const targets = new Set(); // List of targets we dispatched the event to, we don't want to dispatch to the same target twice.
         for (var j in ids) {
             const id = ids[j];
             const eventsDispatch = obj.eventsDispatch[id];
             if (eventsDispatch) {
                 for (var i in eventsDispatch) {
-                    if (targets.indexOf(eventsDispatch[i]) == -1) { // Check if we already displatched to this target
-                        targets.push(eventsDispatch[i]);
+                    if (!targets.has(eventsDispatch[i])) { // Check if we already displatched to this target
+                        targets.add(eventsDispatch[i]);
                         try { eventsDispatch[i].HandleEvent(source, event, ids, id); } catch (ex) { console.log(ex, eventsDispatch[i]); }
                     }
                 }
