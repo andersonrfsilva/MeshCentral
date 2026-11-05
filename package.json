@@ -36,6 +36,10 @@
     "sample-config.json",
     "sample-config-advanced.json"
   ],
+  "scripts": {
+    "test": "node --test test/",
+    "check": "node -e \"const fs=require(\\\"fs\\\"),cp=require(\\\"child_process\\\");const f=fs.readdirSync(\\\".\\\").filter(n=>n.endsWith(\\\".js\\\")&&n!==\\\"pkcs7-modified.js\\\").concat([\\\"agents/meshcore.js\\\",\\\"agents/meshcmd.js\\\"],fs.readdirSync(\\\"agents/modules_meshcore\\\").filter(n=>n.endsWith(\\\".js\\\")).map(n=>\\\"agents/modules_meshcore/\\\"+n)).sort();for(const x of f){const r=cp.spawnSync(process.execPath,[\\\"-c\\\",x],{stdio:\\\"inherit\\\"});if(r.error||r.status!==0){console.error(\\\"Syntax check failed: \\\"+x);process.exit(1)}}console.log(\\\"Checked \\\"+f.length+\\\" files\\\")\""
+  },
   "dependencies": {
     "@seald-io/nedb": "4.1.2",
     "@zip.js/zip.js": "2.8.26",

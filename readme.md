@@ -28,6 +28,10 @@ For more information, [visit MeshCentral.com](https://meshcentral.com).
 
 The [Design and Architecture Guide](https://meshcentral.com/docs/MeshCentral2DesignArchitecture.pdf) is a short document that includes information on the design overview, dependencies, source code descriptions of each file, certificates, TLS security, the agent to server handshake, browser to agent relay and WebRTC and the messenger service.
 
+## Tests
+Node >=20.19 and `npm ci` are required to run the tests.
+`npm test` runs the native tests and `npm run check` checks the syntax of the maintained JavaScript files.
+
 ## Video Tutorials
 You can watch many tutorial videos on the [MeshCentral YouTube Channel](https://www.youtube.com/channel/UCJWz607A8EVlkilzcrb-GKg/videos). Two videos to get started involve installation and basic usages.
 
