@@ -2086,8 +2086,8 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 } else {
                     // If many accounts have the same validated e-mail, we are going to use the first one for display, but sent a reset email for all accounts.
                     var responseSent = false;
-                    for (var i in docs) {
-                        var user = obj.users[docs[i]._id] || docs[i]; // Use the cached user, the login path checks that copy for used codes
+                    for (let i in docs) {
+                        const user = obj.users[docs[i]._id] || docs[i]; // Use the cached user, the login path checks that copy for used codes
                         if (checkUserOneTimePasswordRequired(domain, user, req) == true) {
                             // Second factor setup, request it now.
                             checkUserOneTimePassword(req, domain, user, req.body.token, req.body.hwtoken, function (result, authData) {
@@ -2226,7 +2226,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         } else {
             // Check is email already exists
             obj.db.GetUserWithVerifiedEmail(domain.id, email, function (err, docs) {
-                if ((err != null) || ((docs.length > 0) && (docs.find(function (u) { return (u._id === req.session.cuserid); }) < 0))) {
+                if ((err != null) || ((docs.length > 0) && (docs.findIndex(function (u) { return (u._id === req.session.cuserid); }) < 0))) {
                     // Email already exists
                     req.session.messageid = 102; // Existing account with this email address.
                 } else {
@@ -2287,7 +2287,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                         render(req, res, getRenderPage((domain.sitestyle >= 2) ? 'message2' : 'message', req, domain), getRenderArgs({ titleid: 1, msgid: 4, domainurl: encodeURIComponent(domain.url).replace(/'/g, '%27'), arg1: encodeURIComponent(user.email).replace(/'/g, '%27'), arg2: encodeURIComponent(user.name).replace(/'/g, '%27') }, req, domain));
                                     } else {
                                         obj.db.GetUserWithVerifiedEmail(domain.id, user.email, function (err, docs) {
-                                            if ((docs.length > 0) && (docs.find(function (u) { return (u._id === user._id); }) < 0)) {
+                                            if ((docs.length > 0) && (docs.findIndex(function (u) { return (u._id === user._id); }) < 0)) {
                                                 parent.debug('web', 'handleCheckMailRequest: email already in use.');
                                                 render(req, res, getRenderPage((domain.sitestyle >= 2) ? 'message2' : 'message', req, domain), getRenderArgs({ titleid: 1, msgid: 5, domainurl: encodeURIComponent(domain.url).replace(/'/g, '%27'), arg1: encodeURIComponent(user.email).replace(/'/g, '%27') }, req, domain));
                                             } else {
@@ -6316,7 +6316,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             if (authUserid == null) { res.sendStatus(401); return; }
 
             // Get the user
-            const user = obj.users[req.session.userid];
+            const user = obj.users[authUserid];
             if ((user == null) || ((user.siteadmin & 4) == 0)) { res.sendStatus(401); return; } // Check if we have server restore rights
 
             res.set('Content-Type', 'text/html');
@@ -8318,14 +8318,14 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                     // Remove the relay session
                                     delete webRelaySessions[sessionId];
                                     // If there are not more relay sessions, clear the cleanup timer
-                                    if ((Object.keys(webRelaySessions).length == 0) && (obj.cleanupTimer != null)) { clearInterval(webRelayCleanupTimer); obj.cleanupTimer = null; }
+                                    if ((Object.keys(webRelaySessions).length == 0) && (webRelayCleanupTimer != null)) { clearInterval(webRelayCleanupTimer); webRelayCleanupTimer = null; }
                                 }
 
                                 // Set the multi-tunnel session
                                 webRelaySessions[xrelaySessionId] = relaySession;
 
                                 // Setup the cleanup timer if needed
-                                if (obj.cleanupTimer == null) { webRelayCleanupTimer = setInterval(checkWebRelaySessionsTimeout, 10000); }
+                                if (webRelayCleanupTimer == null) { webRelayCleanupTimer = setInterval(checkWebRelaySessionsTimeout, 10000); }
 
                                 // Redirect to root.
                                 res.redirect('/');
