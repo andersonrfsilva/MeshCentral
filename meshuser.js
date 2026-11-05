@@ -5836,8 +5836,8 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                 if (err != null) { if (command.responseid != null) { try { ws.send(JSON.stringify({ action: 'changeusernotify', responseid: command.responseid, result: err })); } catch (ex) { } } break; }
 
                 // Get the node and the rights for this node
-                parent.GetNodeWithRights(domain, xuser, command.nodeid, function (node, rights, visible) {
-                    if ((rights != 0xFFFFFFFF) && (xuser._id != command.xuserid)) return;
+                parent.GetNodeWithRights(domain, user, command.nodeid, function (node, rights, visible) {
+                    if ((user._id != command.xuserid) && (rights != MESHRIGHT_ADMIN) && ((rights & MESHRIGHT_REMOTECONTROL) == 0)) { return; }
                     const desktopRelay = parent.desktoprelays[command.nodeid];
                     if ((desktopRelay == null) || (desktopRelay === 1)) return; // If the desktopRelay is equal to 1, the relay is being constructed.
                     var viewersToClose = []; // Create a list of viewers to close. We don't want to close directly because it will change "desktopRelay.viewers" and we will not enumerate correctly. 

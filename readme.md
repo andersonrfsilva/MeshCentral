@@ -24,6 +24,8 @@ For more information, [visit MeshCentral.com](https://meshcentral.com).
 [LinkedIn](https://www.linkedin.com/groups/13067101/)
 
 ## Documentation
+Users may end their own multiplexed desktop sessions; ending another user's session requires remote-control rights on the node.
+
 [New Searchable Documentation](https://ylianst.github.io/MeshCentral/) is available here and contains information every administrator should know including usage, the server configuration file, databases, TLS offloading, Let's Encrypt, IP Filtering, Email setup, embedding, server port aliasing, reverse proxy setup, multi factor authentication, branding & terms of use, HashiCorp Vault support, and SSO.
 
 The [Design and Architecture Guide](https://meshcentral.com/docs/MeshCentral2DesignArchitecture.pdf) is a short document that includes information on the design overview, dependencies, source code descriptions of each file, certificates, TLS security, the agent to server handshake, browser to agent relay and WebRTC and the messenger service.
