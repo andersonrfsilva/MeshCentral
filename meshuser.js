@@ -4478,13 +4478,16 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
 
                 // Argument validation
                 if (common.validateString(command.meshid, 8, 134) == false) { err = 'Invalid device group id'; } // Check the meshid
-                else if (command.meshid.indexOf('/') == -1) { command.meshid = 'mesh/' + domain.id + '/' + command.meshid; }
-                else if ((command.meshid.split('/').length != 3) || (command.meshid.split('/')[1] != domain.id)) { err = 'Invalid domain'; } // Invalid domain, operation only valid for current domain
                 else {
-                    // Check if we have rights on this device group
-                    mesh = parent.meshes[command.meshid];
-                    if (mesh == null) { err = 'Invalid device group id'; } // Check the meshid
-                    else if (parent.GetMeshRights(user, mesh) == 0) { err = 'Access denied'; }
+                    // Normalize short device group ids so they get the same checks as full ids
+                    if (command.meshid.indexOf('/') == -1) { command.meshid = 'mesh/' + domain.id + '/' + command.meshid; }
+                    if ((command.meshid.split('/').length != 3) || (command.meshid.split('/')[1] != domain.id)) { err = 'Invalid domain'; } // Invalid domain, operation only valid for current domain
+                    else {
+                        // Check if we have rights on this device group
+                        mesh = parent.meshes[command.meshid];
+                        if (mesh == null) { err = 'Invalid device group id'; } // Check the meshid
+                        else if (parent.GetMeshRights(user, mesh) == 0) { err = 'Access denied'; }
+                    }
                 }
 
                 // Handle any errors
