@@ -304,7 +304,7 @@ module.exports.CreateWebRelay = function (parent, db, args, domain, mtype) {
             // Stream the HTTP request and body, this is a chunked encoded HTTP request
             // TODO: Flow control (Not sure how to do this in ExpressJS)
             send(Buffer.from(request));
-            req.on('data', function (data) { send(Buffer.concat([Buffer.from(data.length.toString(16) + '\r\n', 'binary'), data, send(Buffer.from('\r\n', 'binary'))])); }); 
+            req.on('data', function (data) { send(Buffer.concat([Buffer.from(data.length.toString(16) + '\r\n', 'binary'), data, Buffer.from('\r\n', 'binary')])); }); 
             req.on('end', function () { send(Buffer.from('0\r\n\r\n', 'binary')); });
         } else {
             // Request has no body, send it now
