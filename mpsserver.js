@@ -612,8 +612,8 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     if ((passwordLen > 2048) || (len < (18 + usernameLen + serviceNameLen + methodNameLen + passwordLen))) return -1;
                     password = data.substring(18 + usernameLen + serviceNameLen + methodNameLen, 18 + usernameLen + serviceNameLen + methodNameLen + passwordLen);
                 }
-                //console.log('MPS:USERAUTH_REQUEST user=' + username + ', service=' + serviceName + ', method=' + methodName + ', password=' + password);
-                parent.debug('mpscmd', '--> USERAUTH_REQUEST user=' + username + ', service=' + serviceName + ', method=' + methodName + ', password=' + password);
+                //console.log('MPS:USERAUTH_REQUEST user=' + username + ', service=' + serviceName + ', method=' + methodName + ', password=***');
+                parent.debug('mpscmd', '--> USERAUTH_REQUEST user=' + username + ', service=' + serviceName + ', method=' + methodName + ', password=***');
 
                 // If the login uses a cookie, check this now
                 if ((username == '**MeshAgentApfTunnel**') && (password != null)) {
@@ -621,14 +621,14 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     if ((cookie == null) || (cookie.a !== 'apf')) {
                         incorrectPasswordCount++;
                         socket.ControlMsg({ action: 'console', msg: 'Invalid login username/password' });
-                        parent.debug('mps', 'Incorrect password', username, password);
+                        parent.debug('mps', 'Incorrect password', username, '***');
                         SendUserAuthFail(socket);
                         return -1;
                     }
                     if (obj.parent.webserver.meshes[cookie.m] == null) {
                         meshNotFoundCount++;
                         socket.ControlMsg({ action: 'console', msg: 'Device group not found (1): ' + cookie.m });
-                        parent.debug('mps', 'Device group not found (1): ' + cookie.m, username, password);
+                        parent.debug('mps', 'Device group not found (1): ' + cookie.m, username, '***');
                         SendUserAuthFail(socket);
                         return -1;
                     }
@@ -647,7 +647,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     if ((args.mpspass != null) && (password != args.mpspass)) {
                         incorrectPasswordCount++;
                         socket.ControlMsg({ action: 'console', msg: 'Invalid login username/password' });
-                        parent.debug('mps', 'Incorrect password', username, password);
+                        parent.debug('mps', 'Incorrect password', username, '***');
                         SendUserAuthFail(socket);
                         return -1;
                     }
@@ -656,7 +656,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     if (usernameLen != 16) {
                         badUserNameLengthCount++;
                         socket.ControlMsg({ action: 'console', msg: 'Username length not 16' });
-                        parent.debug('mps', 'Username length not 16', username, password);
+                        parent.debug('mps', 'Username length not 16', username, '***');
                         SendUserAuthFail(socket);
                         return -1;
                     }
@@ -675,7 +675,7 @@ module.exports.CreateMpsServer = function (parent, db, args, certificates) {
                     if (initialMesh == null) {
                         meshNotFoundCount++;
                         socket.ControlMsg({ action: 'console', msg: 'Device group not found (2): ' + meshIdStart + ', u: ' + username + ', p: ' + password });
-                        parent.debug('mps', 'Device group not found (2)', meshIdStart, username, password);
+                        parent.debug('mps', 'Device group not found (2)', meshIdStart, username, '***');
                         SendUserAuthFail(socket);
                         return -1;
                     }

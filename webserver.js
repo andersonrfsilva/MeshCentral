@@ -5759,11 +5759,11 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
 
                 // Fetch Intel AMT credentials & Setup interceptor
                 if (req.query.p == 1) {
-                    parent.debug('webrelaydata', 'INTERCEPTOR1', { host: node.host, port: port, user: node.intelamt.user, pass: node.intelamt.pass });
+                    parent.debug('webrelaydata', 'INTERCEPTOR1', { host: node.host, port: port, user: node.intelamt.user, pass: '***' });
                     ws.interceptor = obj.interceptor.CreateHttpInterceptor({ host: node.host, port: port, user: node.intelamt.user, pass: node.intelamt.pass });
                     ws.interceptor.blockAmtStorage = true;
                 } else if (req.query.p == 2) {
-                    parent.debug('webrelaydata', 'INTERCEPTOR2', { user: node.intelamt.user, pass: node.intelamt.pass });
+                    parent.debug('webrelaydata', 'INTERCEPTOR2', { user: node.intelamt.user, pass: '***' });
                     ws.interceptor = obj.interceptor.CreateRedirInterceptor({ user: node.intelamt.user, pass: node.intelamt.pass });
                     ws.interceptor.blockAmtStorage = true;
                 }
