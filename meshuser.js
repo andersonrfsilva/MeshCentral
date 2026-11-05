@@ -8801,7 +8801,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                         }
                         getNodeFunc.results = results;
                         getNodeFunc.nodeid = docs[i]._id;
-                        parent.GetNodeWithRights(domain, user, docs[i]._id, getNodeFunc);
+                        parent.GetNodeWithRights(domain, user, docs[i]._id, getNodeFunc, docs[i]); // Reuse the listing document, authorization still runs.
                     }
                 }
             });

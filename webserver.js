@@ -9878,8 +9878,8 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     }
 
 
-    // Return the node and rights for a given nodeid
-    obj.GetNodeWithRights = function (domain, user, nodeid, func) {
+    // Return the node and rights for a given nodeid. The optional fifth argument is a node document the server already fetched; it only replaces the database read.
+    obj.GetNodeWithRights = function (domain, user, nodeid, func, suppliedNode) {
         // Perform user pre-validation
         if ((user == null) || (nodeid == null)) { func(null, 0, false); return; } // Invalid user
         if (typeof user == 'string') { user = obj.users[user]; }
@@ -9892,7 +9892,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         if ((domain != null) && (snode[1] != domain.id)) { func(null, 0, false); return; } // Invalid domain
 
         // Check that we have permissions for this node.
-        db.Get(nodeid, function (err, nodes) {
+        const checkNodeRights = function (err, nodes) {
             if ((nodes == null) || (nodes.length != 1)) { func(null, 0, false); return; } // No such nodeid
 
             // This is a super user that can see all device groups for a given domain
@@ -9945,7 +9945,11 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
 
             // Return the rights we found
             func(nodes[0], rights, visible);
-        });
+        };
+
+        if (suppliedNode === undefined) { db.Get(nodeid, checkNodeRights); return; }
+        if ((suppliedNode == null) || (typeof suppliedNode != 'object') || (suppliedNode._id !== nodeid) || (suppliedNode.domain !== snode[1])) { func(null, 0, false); return; } // Invalid supplied node
+        checkNodeRights(null, [suppliedNode]);
     }
 
     // Returns a list of all meshes that this user has some rights too
