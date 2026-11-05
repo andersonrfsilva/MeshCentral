@@ -24,7 +24,7 @@ Server-side plugin URL validation remains outside this view-only change. Client-
 
 ## views/default.handlebars
 
-Final source inventory: **402 candidate lines**, matched with `innerHTML|QH\s*\(|QA\s*\(|format\s*\(`. The worksheet contains **1097 source/exclusion records**: **882 yes**, **215 n/a**, and **235 records documenting applied boundary remediation**. There are no unremediated or unknown rows. Record counts are not independent vulnerabilities: one shared fix can protect several sinks, and defensive key encoding is explicitly identified. Numeric-boundary remediations can also be n/a exclusions from string injection.
+Final source inventory: **402 candidate lines**, matched with `innerHTML|QH\s*\(|QA\s*\(|format\s*\(`. The worksheet contains **1097 source/exclusion records**: **881 yes**, **216 n/a**, and **235 records documenting applied boundary remediation**. There are no unremediated or unknown rows. Record counts are not independent vulnerabilities: one shared fix can protect several sinks, and defensive key encoding is explicitly identified. Numeric-boundary remediations can also be n/a exclusions from string injection.
 
 All line numbers refer to the edited view. Additional rows include source callers and non-HTML property boundaries outside the candidate regex, so each indirect dialog flow and each changed handler remains documented. The generic dialog forwarding rows do not assert that arbitrary caller HTML is safe.
 
@@ -75,7 +75,7 @@ Provenance cautions: full identifiers are not assumed safe merely because hash s
 | 2686,2688 | Candidate exclusion | certificate days | n/a | 2684 Math.floor((serverinfo.certExpire-Date.now())/86400000);2685 range0–19;format escapes numeric value;notification draw19836 escapes final text | No change |
 | 2696 | QH preconfigured menu onclick | serverinfo.preConfiguredRemoteInput key | yes | 2694 encodeURIComponentEx(i) then inline decodeURIComponent before cmdeskpreconfigtypeaction;original key identity preserved | Fixed by owner: js-context → encodeURIComponentEx/decodeURIComponent |
 | 2696 | QH preconfigured menu label | serverinfo.preConfiguredRemoteInput[].name | yes | 2694 EscapeHtml(name);2702 s alias only selects destination using type | Retain existing boundary |
-| 2707,2708 | QH preconfigured menu onclick | serverinfo.preConfiguredScripts key | yes | 2703 encodeURIComponentEx(i) then inline decodeURIComponent before cmdeskpreconfigscriptaction;original key identity preserved | Fixed by owner: js-context → encodeURIComponentEx/decodeURIComponent |
+| 2707,2708 | QH preconfigured menu onclick | serverinfo.preConfiguredScripts key | n/a | 2703 emits Number(i) as a numeric JavaScript argument; cmdeskpreconfigscriptaction at 7105-7106 forwards it as presetcmd, preserving the numeric command contract rather than a decoded string | Fixed: numeric conversion at JS boundary; reviewer regression correction |
 | 2707,2708 | QH preconfigured menu label | serverinfo.preConfiguredScripts[].name | yes | 2703 EscapeHtml(name);2702 s alias only selects destination using type | Retain existing boundary |
 | 2834 | QH software error | JSON.parse(message.value).error | yes | 2834 explicit EscapeHtml;common helper rejects nonprimitive values instead of emitting raw objects | Retain existing boundary |
 | 2857 | Candidate exclusion | MainComputerState innerHTML read | n/a | Only emptiness comparison;write is separate2858 | No change |
@@ -1374,7 +1374,7 @@ Evidence conventions: line numbers in the first column refer to this final view.
 | 7003 | dialog2.innerHTML via setModalContent | elem.name | yes | customui.dialogs dialog and elem entries; form option keys j; QH helper preserves generated controls. Boundary at view line 2774: EscapeHtml(elem.name). | None. |
 | 7003 | dialog2.innerHTML via setModalContent | elem.options[j] | yes | customui.dialogs dialog and elem entries; form option keys j; QH helper preserves generated controls. Boundary at view line 2773: EscapeHtml(elem.options[j]). | None. |
 | 7003 | dialog2.innerHTML via setModalContent | elem.value | yes | Plugin action prompt escapes plugin name, action value and hidden ID. Boundary at view line 23632: EscapeHtml(elem.value). | None. |
-| 7003 | dialog2.innerHTML via setModalContent | error | yes | OTP/WebAuthn branches: p string derived from message.passwords[i].p; key=message.keys[i]; error is credential API rejection. Boundary at view line 4244: EscapeHtml(error). | EscapeHtml at final scalar boundary. |
+| 7003 | dialog2.innerHTML via setModalContent | error | yes | Credential API rejection can be a DOMException; boundary at 4244 uses EscapeHtml(String(error)) to preserve its message while escaping HTML | EscapeHtml after explicit String conversion; reviewer regression correction. |
 | 7003 | dialog2.innerHTML via setModalContent | error.message | yes | Restore fetch rejection error.message. Boundary at view line 17517: EscapeHtml(error.message). | EscapeHtml at final scalar boundary. |
 | 7003 | dialog2.innerHTML via setModalContent | f.contentDocument.body.innerText | yes | Backup error helper: message.msg and fileDownloadFrame.contentDocument.body.innerText escaped before backup_showMessage. Boundary at view line 17462: EscapeHtml(f.contentDocument.body.innerText). | None. |
 | 7003 | dialog2.innerHTML via setModalContent | file.n | yes | Remote rename file=selected file entry; name escapes in quoted value. Boundary at view line 8185: EscapeHtml(file.n). | None. |
@@ -2931,8 +2931,19 @@ The per-view statements about not running checks describe the slice workers. The
 
 Final candidate-line counts: default 402, default3 418, mobile 157; total **977**. The original four-form inventory had 992 candidates. Text/value replacements removed HTML candidates; removed flows remain documented.
 
-Final worksheet counts: default 1,097 records (882 `yes`, 215 `n/a`, 235 remediated); default3 1,307 records (1,107 `yes`, 200 `n/a`, 303 remediated); mobile 395 records (317 `yes`, 78 `n/a`, 42 remediated). Total **2,799 records**, **2,306 escaped/text-safe records**, **493 justified `n/a` records**, and **580 remediated records**. Remediation overlaps final safety classifications; these are not disjoint totals or independent vulnerability counts. The `n/a` category includes non-sinks, constants, and proven numeric boundaries, not blanket trust in server data.
+Final worksheet counts: default 1,097 records (881 `yes`, 216 `n/a`, 235 remediated); default3 1,307 records (1,107 `yes`, 200 `n/a`, 303 remediated); mobile 395 records (317 `yes`, 78 `n/a`, 42 remediated). Total **2,799 records**, **2,305 escaped/text-safe records**, **494 justified `n/a` records**, and **580 remediated records**. Remediation overlaps final safety classifications; these are not disjoint totals or independent vulnerability counts. The `n/a` category includes non-sinks, constants, and proven numeric boundaries, not blanket trust in server data.
 
 Classification and remediation were integrated per view, followed by the prescribed inventory, worksheet, focused, and integration gates. `plans/README.md` was intentionally not updated under reviewer instructions. The worktree has no `plans/` directory, so this committed worksheet contains execution and manual-check evidence instead of modifying the external plan.
 
 Residual limitations: browser layout and real interaction checks remain unperformed. Existing double escaping and the unchanged remote-folder encoded-key lookup issue are documented rather than silently included in this security change. Server-side plugin URL validation and other templates remain outside scope.
+
+## Reviewer regression corrections
+
+These regression rows supplement the existing source classifications above; they are not additional source-to-sink records.
+
+| Site | Regression | Correction and executable proof |
+| --- | --- | --- |
+| views/default.handlebars:2703 | URI decoding changed the script index from a number to a string, so the server rejected presetcmd. | Number(i) restores a numeric inline argument. The extracted menu and cmdeskpreconfigscriptaction test executes the handler and asserts the sent presetcmd has type number and value 0. |
+| views/default3.handlebars:4244 | EscapeHtml received a DOMException object and returned undefined, losing the registration error. | EscapeHtml(String(error)) preserves escaped error text. The extracted boundary test uses a real DOMException with HTML-sensitive characters and checks its displayed message. |
+
+Reviewer-revision verification: `npm run check && npm test` exited 0. Syntax baseline checked 75 files; all 132 tests passed, including both new regression tests and the worksheet/regex gates. Browser checks remain NOT RUN.

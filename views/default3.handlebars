@@ -4241,7 +4241,7 @@
                     }, function (error) {
                         // Error
                         console.log("ERROR: " + error);
-                        setModalContent('xxAddAgent', "Add Security Key", "ERROR: " + EscapeHtml(error));
+                        setModalContent('xxAddAgent', "Add Security Key", "ERROR: " + EscapeHtml(String(error)));
                     });
                     showModal('xxAddAgentModal', 'idx_dlgOkButton');
                     break;

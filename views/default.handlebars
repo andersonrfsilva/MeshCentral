@@ -2700,7 +2700,7 @@
                         var x = '', y = '';
                         for (var i in serverinfo.preConfiguredScripts) {
                             var s = serverinfo.preConfiguredScripts[i];
-                            var z = '<div class="cmtext" onclick="cmdeskpreconfigscriptaction(decodeURIComponent(\'' + encodeURIComponentEx(i) + '\'),event)">' + EscapeHtml(serverinfo.preConfiguredScripts[i].name) + '</div>';
+                            var z = '<div class="cmtext" onclick="cmdeskpreconfigscriptaction(' + Number(i) + ',event)">' + EscapeHtml(serverinfo.preConfiguredScripts[i].name) + '</div>';
                             if (s.type != 3) { x += z; }
                             if (s.type >= 3) { y += z; }
                         }

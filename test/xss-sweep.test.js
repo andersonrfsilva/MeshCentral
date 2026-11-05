@@ -330,3 +330,43 @@ test('notes use escaped fallback when sanitizer is absent or unsupported', funct
         }
     }
 });
+
+test('preconfigured script menu sends a numeric preset command', function () {
+    const source = sources.get('views/default.handlebars');
+    const menu = source.split('\n').find(function (line) { return line.includes('var z =') && line.includes('cmdeskpreconfigscriptaction('); });
+    assert.ok(menu);
+    let sent;
+    const context = vm.createContext({
+        i: '0',
+        serverinfo: { preConfiguredScripts: [{ name: 'Script' }] },
+        EscapeHtml: function (value) { return value; },
+        currentNode: { _id: 'node/domain/id' },
+        meshserver: { send: function (message) { sent = message; } },
+        event: {}
+    });
+    vm.runInContext(extractViewFunction(source, 'cmdeskpreconfigscriptaction') + '\n' + menu, context);
+    const handler = /onclick="([^"]*)"/.exec(context.z);
+    assert.ok(handler);
+    vm.runInContext(handler[1], context);
+    assert.equal(sent.action, 'runcommands');
+    assert.equal(typeof sent.presetcmd, 'number');
+    assert.equal(sent.presetcmd, 0);
+});
+
+test('WebAuthn registration displays escaped DOMException text', function () {
+    const source = sources.get('views/default3.handlebars');
+    const boundary = source.split('\n').find(function (line) { return line.includes('setModalContent(') && line.includes('"Add Security Key"') && line.includes('"ERROR: "'); });
+    assert.ok(boundary);
+    const common = fs.readFileSync(path.join(root, 'public/scripts/common-0.0.1.js'), 'utf8');
+    const escape = common.split('\n').find(function (line) { return line.startsWith('function EscapeHtml('); });
+    const error = new DOMException('<test> & "denied" \'request\'', 'NotAllowedError');
+    let rendered;
+    const context = vm.createContext({
+        error: error,
+        setModalContent: function (id, title, text) { rendered = text; }
+    });
+    vm.runInContext(escape + '\n' + boundary, context);
+    assert.equal(rendered, 'ERROR: ' + context.EscapeHtml(String(error)));
+    assert.ok(rendered.includes('NotAllowedError:'));
+    assert.ok(!rendered.includes('<test>'));
+});
