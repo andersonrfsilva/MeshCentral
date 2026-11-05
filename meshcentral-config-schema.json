@@ -1505,9 +1505,23 @@
             "description": "Requires that agents add the value ?key=xxx in the URL in order to connect. This is not automatic and needs to be manually added in the meshagent.msh file."
           },
           "ipkvm": {
-            "type": "boolean",
+            "type": [
+              "boolean",
+              "object"
+            ],
             "default": false,
-            "description": "Set to true to enable IP KVM device support in this domain."
+            "description": "Set to true, or to an object, to enable IP KVM device support in this domain. Appliance and loopback TLS certificates are verified by default.",
+            "properties": {
+              "tlsverify": {
+                "type": "boolean",
+                "default": true,
+                "description": "Only the value false disables certificate verification, for the IP KVM connections of this domain only."
+              },
+              "ca": {
+                "type": "string",
+                "description": "Path to a PEM file with one or more trusted CA certificates, used instead of the system trust store for IP KVM connections. It must trust the appliance certificate and, for devices reached through a relay, the MeshCentral server certificate. A relative path is resolved against the MeshCentral data folder. If the file can not be read, IP KVM support for the affected device groups is not started."
+              }
+            }
           },
           "minify": {
             "type": "boolean",
@@ -4304,6 +4318,35 @@
         }
       }
     },
+    "firebaserelay": {
+      "title": "Firebase push notification relay",
+      "description": "Settings of the relay used to send push notifications to mobile agents.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the relay, https:// for push only or wss:// for two-way notifications."
+        },
+        "key": {
+          "type": "string",
+          "description": "Optional key sent to the relay."
+        },
+        "log": {
+          "type": "boolean",
+          "default": false,
+          "description": "Set to true to log relay activity in firebaserelay.txt in the data folder."
+        },
+        "tlsverify": {
+          "type": "boolean",
+          "default": true,
+          "description": "Relay certificate verification. Only the value false disables verification, and only for the relay. Self-signed relays should use the ca setting instead."
+        },
+        "ca": {
+          "type": "string",
+          "description": "Path to a PEM file with one or more trusted CA certificates, used instead of the system trust store for this integration only. A relative path is resolved against the MeshCentral data folder. If the file can not be read, this integration is disabled instead of connecting without verification."
+        }
+      }
+    },
     "letsEncrypt": {
       "title": "Built-in Let's Encrypt support",
       "description": "If your server has a proper DNS name and it public facing on the Internet with a public facing HTTP server on port 80, you can get a free TLS certificate.",
@@ -4679,6 +4722,15 @@
             "url": {
               "type": "string",
               "description": "A http or https URL with {{phone}} and {{message}} in the string. These will be replaced with the URL encoded target phone number and message."
+            },
+            "tlsverify": {
+              "type": "boolean",
+              "default": true,
+              "description": "HTTPS certificate verification for the SMS URL. Only the value false disables verification, and only for this SMS gateway. Self-signed gateways should use the ca setting instead."
+            },
+            "ca": {
+              "type": "string",
+              "description": "Path to a PEM file with one or more trusted CA certificates, used instead of the system trust store for this integration only. A relative path is resolved against the MeshCentral data folder. If the file can not be read, this integration is disabled instead of connecting without verification."
             }
           },
           "required": [

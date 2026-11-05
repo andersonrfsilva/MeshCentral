@@ -45,6 +45,19 @@
 }
 */
 
+// Build the TLS options of an integration. Only an explicit boolean false disables verification.
+// The optional "ca" PEM file is read once, a relative path is resolved against the data folder.
+// Throws a generic error (never the PEM or the failing system message) if the file can not be used.
+function getTlsOptions(config, datapath) {
+    const tlsOptions = { rejectUnauthorized: (config == null) || (config.tlsverify !== false) };
+    if ((config != null) && (config.ca != null)) {
+        if ((typeof config.ca != 'string') || (config.ca == '')) { throw new Error('Invalid CA file configuration for the SMS gateway.'); }
+        try { tlsOptions.ca = require('fs').readFileSync(require('path').resolve(datapath, config.ca)); } catch (ex) { throw new Error('Unable to read the CA file configured for the SMS gateway.'); }
+    }
+    return tlsOptions;
+}
+module.exports.getTlsOptions = getTlsOptions;
+
 // Construct a SMS server object
 module.exports.CreateMeshSMS = function (parent) {
     var obj = {};
@@ -86,6 +99,7 @@ module.exports.CreateMeshSMS = function (parent) {
         }
         case 'url': {
             // Validate URL configuration values
+            try { obj.tlsOptions = getTlsOptions(parent.config.sms, parent.datapath); } catch (ex) { console.log('ERROR: ' + ex.message); obj.tlsOptions = null; } // Fail closed, HTTPS requests are refused.
             if (parent.config.sms.url != 'console') {
                 if (typeof parent.config.sms.url != 'string') { console.log('Invalid or missing SMS gateway URL value.'); return null; }
                 if (!parent.config.sms.url.toLowerCase().startsWith('http://') && !parent.config.sms.url.toLowerCase().startsWith('https://')) { console.log('Invalid or missing SMS gateway, URL must start with http:// or https://.'); return null; }
@@ -150,7 +164,8 @@ module.exports.CreateMeshSMS = function (parent) {
                 sms = new URL(sms);
                 if (sms.protocol == 'https:') {
                     // HTTPS GET request
-                    const options = { hostname: sms.hostname, port: sms.port ? sms.port : 443, path: sms.pathname + sms.search, method: 'GET', rejectUnauthorized: false };
+                    if (obj.tlsOptions == null) { parent.debug('email', 'SMS error: invalid TLS configuration'); if (func != null) { func(false, 'tls', null); } return; }
+                    const options = { hostname: sms.hostname, port: sms.port ? sms.port : 443, path: sms.pathname + sms.search, method: 'GET', rejectUnauthorized: obj.tlsOptions.rejectUnauthorized, ca: obj.tlsOptions.ca };
                     const request = require('https').request(options, function (res) { parent.debug('email', 'SMS result: ' + res.statusCode); if (func != null) { func(res.statusCode == 200, (res.statusCode == 200) ? null : res.statusCode, null); } res.on('data', function (d) { }); });
                     request.on('error', function (err) { parent.debug('email', 'SMS error: ' + err); if (func != null) { func(false, err, null); } });
                     request.end();

@@ -6,6 +6,18 @@
 * @version v0.0.1
 */
 
+// Build the TLS options of the IP KVM integration of a domain. Only an explicit boolean false disables verification.
+// The optional "ca" PEM file is read once, a relative path is resolved against the data folder.
+// Throws a generic error (never the PEM or the failing system message) if the file can not be used.
+function getTlsOptions(config, datapath) {
+    const tlsOptions = { rejectUnauthorized: (config == null) || (config.tlsverify !== false) };
+    if ((config != null) && (config.ca != null)) {
+        if ((typeof config.ca != 'string') || (config.ca == '')) { throw new Error('Invalid CA file configuration for IP KVM support.'); }
+        try { tlsOptions.ca = require('fs').readFileSync(require('path').resolve(datapath, config.ca)); } catch (ex) { throw new Error('Unable to read the CA file configured for IP KVM support.'); }
+    }
+    return tlsOptions;
+}
+
 function CreateIPKVMManager(parent) {
     const obj = {};
     obj.parent = parent;
@@ -68,8 +80,13 @@ function CreateIPKVMManager(parent) {
         if ((mesh == null) || (mesh.mtype != 4) || (mesh.kvm == null) || (mesh.deleted != null) || (obj.managedGroups[mesh._id] != null)) return;
         var port = 443, hostSplit = mesh.kvm.host.split(':'), host = hostSplit[0];
         if (hostSplit.length == 2) { port = parseInt(hostSplit[1]); }
+
+        // Certificate verification is on unless the domain ipkvm settings explicitly set tlsverify to false. If the CA file is bad, fail closed.
+        const domain = parent.config.domains[mesh._id.split('/')[1]];
+        var tlsOptions;
+        try { tlsOptions = getTlsOptions(((domain != null) && (typeof domain.ipkvm == 'object')) ? domain.ipkvm : null, parent.datapath); } catch (ex) { console.log('ERROR: ' + ex.message); return; }
         if (mesh.kvm.model == 1) { // Raritan KX III
-            const manager = CreateRaritanKX3Manager(obj, host, port, mesh.kvm.user, mesh.kvm.pass);
+            const manager = CreateRaritanKX3Manager(obj, host, port, mesh.kvm.user, mesh.kvm.pass, tlsOptions);
             manager.meshid = mesh._id;
             manager.relayid = mesh.relayid;
             manager.domainid = mesh._id.split('/')[1];
@@ -78,7 +95,7 @@ function CreateIPKVMManager(parent) {
             manager.onPortsChanged = onPortsChanged;
             manager.start();
         } else if (mesh.kvm.model == 2) { // WebPowerSwitch 7
-            const manager = CreateWebPowerSwitch(obj, host, port, mesh.kvm.user, mesh.kvm.pass);
+            const manager = CreateWebPowerSwitch(obj, host, port, mesh.kvm.user, mesh.kvm.pass, tlsOptions);
             manager.meshid = mesh._id;
             manager.relayid = mesh.relayid;
             manager.domainid = mesh._id.split('/')[1];
@@ -325,7 +342,7 @@ function CreateIPKVMManager(parent) {
 
 
 // Create Raritan Dominion KX III Manager
-function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
+function CreateRaritanKX3Manager(parent, hostname, port, username, password, tlsOptions) {
     const https = require('https');
     const obj = {};
     var updateTimer = null;
@@ -344,15 +361,15 @@ function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
     obj.onStateChanged = null;
     obj.onPortsChanged = null;
 
-    function onCheckServerIdentity(cert) {
-        console.log('TODO: Certificate Check');
-    }
+    // Check the certificate against the appliance hostname, even when the TCP connection goes thru the local router.
+    const applianceServername = require('net').isIP(hostname) ? '' : hostname; // No SNI for IP addresses
+    function onCheckServerIdentity(servername, cert) { return require('tls').checkServerIdentity(hostname, cert); }
 
     obj.start = function () {
         if (obj.started) return;
         obj.started = true;
         if (obj.relayid) {
-            obj.router = CreateMiniRouter(parent, obj.relayid, hostname, port);
+            obj.router = CreateMiniRouter(parent, obj.relayid, hostname, port, tlsOptions);
             obj.router.start(function () { connect(); });
         } else {
             connect();
@@ -392,7 +409,9 @@ function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
         const options = {
             hostname: hostname,
             port: port,
-            rejectUnauthorized: false,
+            rejectUnauthorized: tlsOptions.rejectUnauthorized,
+            ca: tlsOptions.ca,
+            servername: applianceServername,
             checkServerIdentity: onCheckServerIdentity,
             path: '/auth.asp?client=javascript', // ?client=standalone
             method: 'POST',
@@ -420,7 +439,9 @@ function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
         const options = {
             hostname: hostname,
             port: port,
-            rejectUnauthorized: false,
+            rejectUnauthorized: tlsOptions.rejectUnauthorized,
+            ca: tlsOptions.ca,
+            servername: applianceServername,
             checkServerIdentity: onCheckServerIdentity,
             path: '/cookiecheck.asp',
             method: 'GET',
@@ -582,7 +603,9 @@ function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
         const options = {
             hostname: obj.router ? 'localhost' : hostname,
             port: obj.router ? obj.router.tcpServerPort : port,
-            rejectUnauthorized: false,
+            rejectUnauthorized: tlsOptions.rejectUnauthorized,
+            ca: tlsOptions.ca,
+            servername: applianceServername,
             checkServerIdentity: onCheckServerIdentity,
             path: url,
             method: (postdata != null) ? 'POST' : 'GET',
@@ -660,8 +683,10 @@ function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
             // Setup a websocket-to-websocket relay
             try {
                 const options = {
-                    rejectUnauthorized: false,
-                    servername: 'raritan', // We set this to remove the IP address warning from NodeJS.
+                    rejectUnauthorized: tlsOptions.rejectUnauthorized,
+                    ca: tlsOptions.ca,
+                    servername: applianceServername,
+                    checkServerIdentity: onCheckServerIdentity,
                     headers: { Cookie: 'pp_session_id=' + obj.authCookie + '; view_length=32' }
                 };
                 parent.parent.debug('relay', 'IPKVM: Relay connecting to: wss://' + hostname + ':' + port + '/rfb');
@@ -772,7 +797,7 @@ function CreateRaritanKX3Manager(parent, hostname, port, username, password) {
 
 
 // Create WebPowerSwitch Manager
-function CreateWebPowerSwitch(parent, hostname, port, username, password) {
+function CreateWebPowerSwitch(parent, hostname, port, username, password, tlsOptions) {
     port = 80;
     const https = require('http');
     const crypto = require('crypto');
@@ -791,16 +816,16 @@ function CreateWebPowerSwitch(parent, hostname, port, username, password) {
     obj.onStateChanged = null;
     obj.onPortsChanged = null;
 
-    function onCheckServerIdentity(cert) {
-        console.log('TODO: Certificate Check');
-    }
+    // Check the certificate against the appliance hostname, even when the TCP connection goes thru the local router.
+    const applianceServername = require('net').isIP(hostname) ? '' : hostname; // No SNI for IP addresses
+    function onCheckServerIdentity(servername, cert) { return require('tls').checkServerIdentity(hostname, cert); }
 
     obj.start = function () {
         if (obj.started) return;
         obj.started = true;
         if (obj.state == 0) {
             if (obj.relayid) {
-                obj.router = CreateMiniRouter(parent, obj.relayid, hostname, port);
+                obj.router = CreateMiniRouter(parent, obj.relayid, hostname, port, tlsOptions);
                 obj.router.start(function () { connect(); });
             } else {
                 connect();
@@ -895,7 +920,9 @@ function CreateWebPowerSwitch(parent, hostname, port, username, password) {
         const options = {
             hostname: obj.router ? 'localhost' : hostname,
             port: obj.router ? obj.router.tcpServerPort : port,
-            rejectUnauthorized: false,
+            rejectUnauthorized: tlsOptions.rejectUnauthorized,
+            ca: tlsOptions.ca,
+            servername: applianceServername,
             checkServerIdentity: onCheckServerIdentity,
             path: url,
             method: method,
@@ -983,7 +1010,7 @@ function CreateWebPowerSwitch(parent, hostname, port, username, password) {
 
 
 // Mini TCP port router
-function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
+function CreateMiniRouter(parent, nodeid, targetHost, targetPort, tlsOptions) {
     const Net = require('net');
     const WebSocket = require('ws');
     const obj = {};
@@ -1038,7 +1065,15 @@ function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
             const domain = parent.parent.config.domains[domainid];
 
             // Setup the correct URL with domain and use TLS only if needed.
-            const options = { rejectUnauthorized: false };
+            // The relay websocket connects to this MeshCentral server, so its certificate must match the server name, not the appliance.
+            const serverName = domain.dns || parent.parent.certificates.CommonName;
+            if ((tlsOptions.rejectUnauthorized != false) && ((typeof serverName != 'string') || (serverName == ''))) { parent.parent.debug('relay', 'MiniRouter: Unable to determine the server name to verify'); closeTcpSocket(socket); return; }
+            const options = {
+                rejectUnauthorized: tlsOptions.rejectUnauthorized,
+                ca: tlsOptions.ca,
+                servername: require('net').isIP(serverName) ? '' : serverName, // No SNI for IP addresses
+                checkServerIdentity: function (servername, cert) { return require('tls').checkServerIdentity(serverName, cert); }
+            };
             const protocol = (parent.parent.args.tlsoffload) ? 'ws' : 'wss';
             var domainadd = '';
             if ((domain.dns == null) && (domain.id != '')) { domainadd = domain.id + '/' }
@@ -1081,3 +1116,7 @@ function CreateMiniRouter(parent, nodeid, targetHost, targetPort) {
 }
 
 module.exports.CreateIPKVMManager = CreateIPKVMManager;
+module.exports.CreateRaritanKX3Manager = CreateRaritanKX3Manager;
+module.exports.CreateWebPowerSwitch = CreateWebPowerSwitch;
+module.exports.CreateMiniRouter = CreateMiniRouter;
+module.exports.getTlsOptions = getTlsOptions;

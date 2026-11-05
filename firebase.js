@@ -150,6 +150,18 @@ module.exports.CreateFirebase = function (parent, serviceAccount) {
     return obj;
 };
 
+// Build the TLS options of an integration. Only an explicit boolean false disables verification.
+// The optional "ca" PEM file is read once, a relative path is resolved against the data folder.
+// Throws a generic error (never the PEM or the failing system message) if the file can not be used.
+function getTlsOptions(config, datapath) {
+    const tlsOptions = { rejectUnauthorized: (config == null) || (config.tlsverify !== false) };
+    if ((config != null) && (config.ca != null)) {
+        if ((typeof config.ca != 'string') || (config.ca == '')) { throw new Error('Invalid CA file configuration for the Firebase relay.'); }
+        try { tlsOptions.ca = require('fs').readFileSync(require('path').resolve(datapath, config.ca)); } catch (ex) { throw new Error('Unable to read the CA file configured for the Firebase relay.'); }
+    }
+    return tlsOptions;
+}
+module.exports.getTlsOptions = getTlsOptions;
 
 // Construct the Firebase object
 module.exports.CreateFirebaseRelay = function (parent, url, key) {
@@ -177,6 +189,9 @@ module.exports.CreateFirebaseRelay = function (parent, url, key) {
         obj.log = function () { }
     }
     
+    // Certificate verification is on unless the relay configuration explicitly sets tlsverify to false. If the CA file is bad, fail closed.
+    try { obj.tlsOptions = getTlsOptions(parent.config.firebaserelay, parent.datapath); } catch (ex) { obj.tlsOptions = null; console.log('ERROR: ' + ex.message); obj.log('ERROR: ' + ex.message); }
+
     obj.log('Starting relay to: ' + relayUrl.href);
     if (relayUrl.protocol == 'wss:') {
         // Setup two-way push notification channel
@@ -185,8 +200,8 @@ module.exports.CreateFirebaseRelay = function (parent, url, key) {
         obj.backoffTimer = 0;
         obj.connectWebSocket = function () {
             if (obj.reconnectTimer != null) { try { clearTimeout(obj.reconnectTimer); } catch (ex) { } delete obj.reconnectTimer; }
-            if (obj.wsclient != null) return;
-            obj.wsclient = new WebSocket(relayUrl.href + (key ? ('?key=' + key) : ''), { rejectUnauthorized: false })
+            if ((obj.wsclient != null) || (obj.tlsOptions == null)) return;
+            obj.wsclient = new WebSocket(relayUrl.href + (key ? ('?key=' + key) : ''), Object.assign({}, obj.tlsOptions))
             obj.wsclient.on('open', function () {
                 obj.lastConnect = Date.now();
                 parent.debug('email', 'FBWS-Connected');
@@ -282,6 +297,7 @@ module.exports.CreateFirebaseRelay = function (parent, url, key) {
         obj.sendToDeviceEx = function (node, payload, options, func) {
             parent.debug('email', 'Firebase-sendToDevice-httpPost');
             if ((node == null) || (typeof node.pmt != 'string')) return;
+            if (obj.tlsOptions == null) { obj.stats.sendError++; if (func != null) { func(0, 'error'); } return; }
             
             // Fill in the server agent cert hash
             if (payload.data == null) { payload.data = {}; }
@@ -296,7 +312,8 @@ module.exports.CreateFirebaseRelay = function (parent, url, key) {
                 port: relayUrl.port ? relayUrl.port : 443,
                 path: relayUrl.pathname + (key ? ('?key=' + key) : ''),
                 method: 'POST',
-                //rejectUnauthorized: false, // DEBUG
+                rejectUnauthorized: obj.tlsOptions.rejectUnauthorized,
+                ca: obj.tlsOptions.ca,
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Content-Length': querydata.length
