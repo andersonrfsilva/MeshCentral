@@ -31,6 +31,31 @@ module.exports.IntToStrX = function (v) { return String.fromCharCode(v & 0xFF, (
 module.exports.MakeToArray = function (v) { if (!v || v == null || typeof v == 'object') return v; return [v]; };
 module.exports.SplitArray = function (v) { return v.split(','); };
 module.exports.Clone = function (v) { return JSON.parse(JSON.stringify(v)); };
+
+// Clone a safe version of a user object, remove everything that is secret.
+module.exports.CloneSafeUser = function (user) {
+    if (typeof user != 'object') { return user; }
+    var user2 = Object.assign({}, user); // Shallow clone
+    delete user2.hash;
+    delete user2.oldpasswords; // Password history holds salted hashes of past passwords.
+    delete user2.passhint;
+    delete user2.salt;
+    delete user2.type;
+    delete user2.domain;
+    delete user2.subscriptions;
+    delete user2.passtype;
+    delete user2.otpsms;
+    delete user2.otpmsg;
+    if ((typeof user2.otpekey == 'object') && (user2.otpekey != null)) { user2.otpekey = 1; } // Indicates that email 2FA is enabled.
+    if ((typeof user2.otpduo == 'object') && (user2.otpduo != null)) { user2.otpduo = 1; } // Indicates that duo 2FA is enabled.
+    if ((typeof user2.otpsecret == 'string') && (user2.otpsecret != null)) { user2.otpsecret = 1; } // Indicates a time secret is present.
+    if ((typeof user2.otpkeys == 'object') && (user2.otpkeys != null)) { user2.otpkeys = 0; if (user.otpkeys != null) { for (var i = 0; i < user.otpkeys.keys.length; i++) { if (user.otpkeys.keys[i].u == true) { user2.otpkeys = 1; } } } } // Indicates the number of one time backup codes that are active.
+    if ((typeof user2.otphkeys == 'object') && (user2.otphkeys != null)) { user2.otphkeys = user2.otphkeys.length; } // Indicates the number of hardware keys setup
+    if ((typeof user2.otpdev == 'string') && (user2.otpdev != null)) { user2.otpdev = 1; } // Indicates device for 2FA push notification
+    if ((typeof user2.webpush == 'object') && (user2.webpush != null)) { user2.webpush = user2.webpush.length; } // Indicates the number of web push sessions we have
+    return user2;
+};
+
 module.exports.StringifyRedacted = function (v) { return JSON.stringify(v, function (k, x) { return ((x != null) && /secret|password|passwd|private|pvk|token$/i.test(k)) ? '****' : x; }); }; // For logs, keeps keys but masks credential values
 module.exports.IsFilenameValid = (function () { var x1 = /^[^\\/:\*\?"<>\|]+$/, x2 = /^\./, x3 = /^(nul|prn|con|lpt[0-9]|com[0-9])(\.|$)/i; return function isFilenameValid(fname) { return module.exports.validateString(fname, 1, 4096) && x1.test(fname) && !x2.test(fname) && !x3.test(fname) && (fname[0] != '.'); }; })();
 module.exports.makeFilename = function (v) { return v.split('\\').join('').split('/').join('').split(':').join('').split('*').join('').split('?').join('').split('"').join('').split('<').join('').split('>').join('').split('|').join('').split(' ').join('').split('\'').join(''); }
