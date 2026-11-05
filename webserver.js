@@ -170,6 +170,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     obj.tcpServer = null;
     obj.certificates = certificates;
     obj.users = {};                             // UserID --> User
+    obj.bootstrapClaimed = Object.create(null); // DomainID --> true while the first account of an empty domain is being created
     obj.oidcLogoutUrls = {};                    // UserID --> OIDC end session URL from the last login
     obj.meshes = {};                            // MeshID --> Mesh (also called device group)
     obj.userGroups = {};                        // UGrpID --> User Group
@@ -1817,11 +1818,21 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             return;
         }
 
+        // Claim the empty-domain bootstrap slot synchronously, overlapping bootstrap attempts are rejected.
+        var bootstrapOwner = false;
+        function releaseBootstrap() { if (bootstrapOwner) { delete obj.bootstrapClaimed[domain.id]; bootstrapOwner = false; } }
+        if (domainUserCount == 0) {
+            if (obj.bootstrapClaimed[domain.id]) { parent.debug('web', 'handleCreateAccountRequest: bootstrap already in progress.'); res.sendStatus(401); return; }
+            obj.bootstrapClaimed[domain.id] = true;
+            bootstrapOwner = true;
+        }
+
         // Check if this request is for an allows email domain
         if ((domain.newaccountemaildomains != null) && Array.isArray(domain.newaccountemaildomains)) {
             var i = -1;
             if (typeof req.body.email == 'string') { i = req.body.email.indexOf('@'); }
             if (i == -1) {
+                releaseBootstrap();
                 parent.debug('web', 'handleCreateAccountRequest: unable to create account (1)');
                 req.session.loginmode = 2;
                 req.session.messageid = 100; // Unable to create account.
@@ -1831,6 +1842,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             var emailok = false, emaildomain = req.body.email.substring(i + 1).toLowerCase();
             for (var i in domain.newaccountemaildomains) { if (emaildomain == domain.newaccountemaildomains[i].toLowerCase()) { emailok = true; } }
             if (emailok == false) {
+                releaseBootstrap();
                 parent.debug('web', 'handleCreateAccountRequest: unable to create account (2)');
                 req.session.loginmode = 2;
                 req.session.messageid = 100; // Unable to create account.
@@ -1842,12 +1854,14 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         // Check if we exceed the maximum number of user accounts
         obj.db.isMaxType(domain.limits.maxuseraccounts, 'user', domain.id, function (maxExceed) {
             if (maxExceed) {
+                releaseBootstrap();
                 parent.debug('web', 'handleCreateAccountRequest: account limit reached');
                 req.session.loginmode = 2;
                 req.session.messageid = 101; // Account limit reached.
                 if (direct === true) { handleRootRequestEx(req, res, domain); } else { res.redirect(domain.url + getQueryPortion(req)); }
             } else {
                 if (!obj.common.validateUsername(req.body.username, 1, 64) || !obj.common.validateEmail(req.body.email, 1, 256) || !obj.common.validateString(req.body.password1, 1, 256) || !obj.common.validateString(req.body.password2, 1, 256) || (req.body.password1 != req.body.password2) || req.body.username == '~' || !obj.common.checkPasswordRequirements(req.body.password1, domain.passwordrequirements)) {
+                    releaseBootstrap();
                     parent.debug('web', 'handleCreateAccountRequest: unable to create account (3)');
                     req.session.loginmode = 2;
                     req.session.messageid = 100; // Unable to create account.
@@ -1855,7 +1869,16 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 } else {
                     // Check if this email was already verified
                     obj.db.GetUserWithVerifiedEmail(domain.id, req.body.email, function (err, docs) {
+                        if (err) {
+                            releaseBootstrap();
+                            parent.debug('web', 'handleCreateAccountRequest: unable to create account (4)');
+                            req.session.loginmode = 2;
+                            req.session.messageid = 100; // Unable to create account.
+                            if (direct === true) { handleRootRequestEx(req, res, domain); } else { res.redirect(domain.url + getQueryPortion(req)); }
+                            return;
+                        }
                         if ((docs != null) && (docs.length > 0)) {
+                            releaseBootstrap();
                             parent.debug('web', 'handleCreateAccountRequest: Existing account with this email address');
                             req.session.loginmode = 2;
                             req.session.messageid = 102; // Existing account with this email address.
@@ -1863,6 +1886,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         } else {
                             // Check if user exists
                             if (obj.users['user/' + domain.id + '/' + req.body.username.toLowerCase()]) {
+                                releaseBootstrap();
                                 parent.debug('web', 'handleCreateAccountRequest: Username already exists');
                                 req.session.loginmode = 2;
                                 req.session.messageid = 104; // Username already exists.
@@ -1871,7 +1895,13 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                 if (domain.newaccountsrights) { user.siteadmin = domain.newaccountsrights; }
                                 if (obj.common.validateStrArray(domain.newaccountrealms)) { user.groups = domain.newaccountrealms; }
                                 if ((domain.passwordrequirements != null) && (domain.passwordrequirements.hint === true) && (req.body.apasswordhint)) { var hint = req.body.apasswordhint; if (hint.length > 250) { hint = hint.substring(0, 250); } user.passhint = hint; }
-                                if (domainUserCount == 0) { user.siteadmin = 4294967295; /*if (domain.newaccounts === 2) { delete domain.newaccounts; }*/ } // If this is the first user, give the account site admin.
+                                if (bootstrapOwner) {
+                                    // Re-count right before granting, no asynchronous operation runs between this check and the cache insertion.
+                                    var currentUserCount = 0;
+                                    for (var i in obj.users) { if (obj.users[i].domain == domain.id) { currentUserCount++; } }
+                                    if (currentUserCount == 0) { user.siteadmin = 4294967295; /*if (domain.newaccounts === 2) { delete domain.newaccounts; }*/ } // If this is the first user, give the account site admin.
+                                    else if ((domain.newaccounts !== 1) && (domain.newaccounts !== true)) { releaseBootstrap(); res.sendStatus(401); return; } // Another user appeared and registration is disabled.
+                                }
 
                                 // Auto-join any user groups
                                 if (typeof domain.newaccountsusergroups == 'object') {
@@ -1897,6 +1927,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                 }
 
                                 obj.users[user._id] = user;
+                                releaseBootstrap(); // The populated user cache now blocks further bootstrap.
                                 req.session.userid = user._id;
                                 req.session.ip = req.clientIp; // Bind this session to the IP address of the request
                                 setSessionRandom(req);
