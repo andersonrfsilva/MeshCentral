@@ -3716,12 +3716,12 @@ module.exports.CreateDB = function (parent, func) {
                 var cmd = buildMongoDumpCommand();
                 cmd += (dburl) ? ' --archive=\"' + obj.newDBDumpFile + '\"' :
                                  ' --db=\"' + dbname + '\" --archive=\"' + obj.newDBDumpFile + '\"';
-                parent.debug('backup','Mongodump cmd: ' + cmd);
+                parent.debug('backup','Running mongodump');
                 const child_process = require('child_process');
                 child_process.exec(
                     cmd,
                     { cwd: parent.parentpath },
-                    (error)=> {if (error) {obj.backupStatus |= BACKUPFAIL_DBDUMP; console.error('ERROR: Unable to perform MongoDB backup: ' + error + '\r\n');} obj.createBackupfile(func);}
+                    (error)=> {if (error) {obj.backupStatus |= BACKUPFAIL_DBDUMP; console.error('ERROR: Unable to perform MongoDB backup (mongodump failed' + ((typeof error.code == 'number') ? ', exit code ' + error.code : '') + ').\r\n');} obj.createBackupfile(func);}
                 );
 
             } else if ((obj.databaseType == DB_MARIADB) || (obj.databaseType == DB_MYSQL)) {
@@ -3731,13 +3731,13 @@ module.exports.CreateDB = function (parent, func) {
            
                 var cmd = buildSqlDumpCommand();
                 cmd += ' --result-file=\"' + obj.newDBDumpFile + '\"';
-                parent.debug('backup','Maria/MySQLdump cmd: ' + cmd);
+                parent.debug('backup','Running mysqldump');
 
                 const child_process = require('child_process');
                 child_process.exec(
                     cmd,
                     { cwd: parent.parentpath },
-                    (error)=> {if (error) {obj.backupStatus |= BACKUPFAIL_DBDUMP; console.error('ERROR: Unable to perform MySQL backup: ' + error + '\r\n');} obj.createBackupfile(func);}
+                    (error)=> {if (error) {obj.backupStatus |= BACKUPFAIL_DBDUMP; console.error('ERROR: Unable to perform MySQL backup (mysqldump failed' + ((typeof error.code == 'number') ? ', exit code ' + error.code : '') + ').\r\n');} obj.createBackupfile(func);}
                 );
 
             } else if (obj.databaseType == DB_SQLITE) {
@@ -3758,18 +3758,18 @@ module.exports.CreateDB = function (parent, func) {
                     + ' --dbname=postgresql://' + encodeURIComponent(parent.config.settings.postgres.user) + ":" + encodeURIComponent(parent.config.settings.postgres.password)
                     + "@" + parent.config.settings.postgres.host + ":" + parent.config.settings.postgres.port + "/" + encodeURIComponent(databaseName)
                     + " --file=" + obj.newDBDumpFile;
-                parent.debug('backup','Postgresqldump cmd: ' + cmd);
+                parent.debug('backup','Running pg_dump');
                 const child_process = require('child_process');
                 child_process.exec(
                     cmd,
                     { cwd: dataPath },
-                    (error)=> {if (error) {obj.backupStatus |= BACKUPFAIL_DBDUMP; console.log('ERROR: Unable to perform PostgreSQL dump: ' + error.message + '\r\n');} obj.createBackupfile(func);}
+                    (error)=> {if (error) {obj.backupStatus |= BACKUPFAIL_DBDUMP; console.log('ERROR: Unable to perform PostgreSQL dump (pg_dump failed' + ((typeof error.code == 'number') ? ', exit code ' + error.code : '') + ').\r\n');} obj.createBackupfile(func);}
                 );
             } else {
                 // NeDB/Acebase backup, no db dump needed, just make a file backup
                 obj.createBackupfile(func);
             }
-        } catch (ex) { console.error(ex); parent.addServerWarning( 'Something went wrong during performBackup, check errorlog: ' +ex.message, true);  };
+        } catch (ex) { console.error('ERROR: Something went wrong during performBackup.'); parent.addServerWarning('Something went wrong during performBackup.', true);  };
         return 'Starting auto-backup...';
     };
 

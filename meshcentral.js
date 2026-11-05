@@ -2309,7 +2309,7 @@ function CreateMeshCentralServer(config, args) {
     obj.StartEx5 = function () {
         // Setup the email server for each domain
         var ipKvmSupport = false;
-        for (var i in obj.config.domains) { if (obj.config.domains[i].ipkvm == true) { ipKvmSupport = true; } }
+        for (var i in obj.config.domains) { if ((obj.config.domains[i].ipkvm === true) || ((typeof obj.config.domains[i].ipkvm == 'object') && (obj.config.domains[i].ipkvm !== null))) { ipKvmSupport = true; } }
         if (ipKvmSupport) { obj.ipKvmManager = require('./meshipkvm').CreateIPKVMManager(obj); }
 
         // Run the server start script if present
