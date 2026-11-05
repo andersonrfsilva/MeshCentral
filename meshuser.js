@@ -6881,6 +6881,8 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
     }
 
     function serverCommandServerBackuppassword(command) {
+        if ((user.siteadmin & SITERIGHT_SERVERBACKUP) == 0) { return; }
+        if ((domain.myserver === false) || ((domain.myserver != null) && (domain.myserver.backup !== true))) { return; }
         if (command.check) {
             //check for existing config.json password for requestercheckbox
             obj.send({ action: 'backuprestore', data: (Object.hasOwn(parent.parent.config.settings.autobackup, 'zippassword')), dialog: command.dialog });
