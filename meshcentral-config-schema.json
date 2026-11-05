@@ -1347,6 +1347,18 @@
             "default": null,
             "description": "The DNS name used to access this domain instead of accessing it via a subfolder"
           },
+          "desktopMultiplex": {
+            "type": ["object", "boolean"],
+            "description": "Remote desktop multiplexer settings for this domain. The multiplexer is still enabled by the server-level settings.desktopMultiplex; a boolean true here keeps its existing meaning of enabling it for this domain and uses the default limit.",
+            "properties": {
+              "maxViewerQueueBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 8388608,
+                "description": "Maximum bytes the server keeps pending for each desktop viewer: queued messages, images the viewer has not been sent yet and the message being sent. Strings count as UTF-8 bytes. When a viewer goes over the limit, images replaced by a newer full-screen image are dropped for that viewer only; if it is still over the limit the viewer is disconnected. Other viewers are not slowed down. Invalid values use the default."
+              }
+            }
+          },
           "siteStyle": {
             "type": "integer",
             "default": 2,

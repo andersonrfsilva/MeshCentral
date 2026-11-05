@@ -67,6 +67,10 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
     obj.agent = null;                   // Reference to the connection object that is the agent.
     obj.viewers = [];                   // Array of references to all viewers.
     obj.viewersOverflowCount = 0;       // Number of viewers currently in overflow state.
+
+    // Maximum bytes pending for one viewer (queued messages, unsent images and the payload being sent). Domain setting desktopMultiplex.maxViewerQueueBytes.
+    obj.maxViewerQueueBytes = 8388608;
+    if ((domain.desktopmultiplex != null) && (typeof domain.desktopmultiplex == 'object') && Number.isSafeInteger(domain.desktopmultiplex.maxviewerqueuebytes) && (domain.desktopmultiplex.maxviewerqueuebytes > 0)) { obj.maxViewerQueueBytes = domain.desktopmultiplex.maxviewerqueuebytes; }
     obj.width = 0;                      // Current width of the display in pixels.
     obj.height = 0;                     // Current height of the display in pixels.
     obj.swidth = 0;                     // Current width of the display in tiles.
@@ -122,6 +126,14 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
             peer.overflow = false;
             peer.sendQueue = [];
             peer.paused = false;
+            peer.sendQueueHead = 0;          // Index of the next queued message to send.
+            peer.sendTimer = null;
+            peer.closing = false;
+            peer.queueBytes = 0;             // Bytes in sendQueue not yet sent.
+            peer.inflightBytes = 0;          // Bytes of the one payload being sent.
+            peer.linkedBytes = 0;            // Bytes of shared images/screen size this viewer has not been sent yet.
+            for (var ip = obj.firstData; ip != null; ip = obj.images[ip].next) { peer.linkedBytes += obj.images[ip].bytes; }
+            peer.pendingBytes = peer.linkedBytes; // Sum of the three counters above.
             peer.startTime = Date.now();
 
             // Add the user to the userids list if needed
@@ -300,6 +312,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
                 parent.parent.DispatchEvent(targets, obj, event);
             }
 
+            clearViewerSendState(peer);
             // Aggressive clean up of the viewer
             delete peer.desktopPaused;
             delete peer.imageType;
@@ -311,6 +324,13 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
             delete peer.sending;
             delete peer.overflow;
             delete peer.sendQueue;
+            delete peer.sendQueueHead;
+            delete peer.sendTimer;
+            delete peer.closing;
+            delete peer.queueBytes;
+            delete peer.inflightBytes;
+            delete peer.linkedBytes;
+            delete peer.pendingBytes;
             delete peer.startTime;
 
             // If this is the last viewer, disconnect the agent
@@ -436,41 +456,136 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
         }
     }
 
+    // Run func on every viewer. Safe if func removes the viewer it was called with (or others) from obj.viewers.
+    function eachViewer(func) {
+        var vs = obj.viewers;
+        for (var i = 0; (vs != null) && (i < vs.length); ) {
+            var v = vs[i];
+            func(v);
+            if (obj.viewers !== vs) return;
+            if (vs[i] === v) { i++; } else { var k = vs.indexOf(v); if (k >= 0) { i = k + 1; } }
+        }
+    }
+
     // Send this command to all viewers
     obj.sendToAllViewers = function (data) {
         if (obj.viewers == null) return;
-        for (var i in obj.viewers) { obj.sendToViewer(obj.viewers[i], data); }
+        eachViewer(function (v) { obj.sendToViewer(v, data); });
     }
 
     // Send this command to all viewers
     obj.sendToAllInputViewers = function (data) {
         if (obj.viewers == null) return;
-        for (var i in obj.viewers) { if (obj.viewers[i].viewOnly != true) { obj.sendToViewer(obj.viewers[i], data); } }
+        eachViewer(function (v) { if (v.viewOnly != true) { obj.sendToViewer(v, data); } });
+    }
+
+    // Number of bytes a payload costs on the wire.
+    function payloadBytes(data) { return (typeof data == 'string') ? Buffer.byteLength(data, 'utf8') : data.length; }
+
+    // Change one pending byte counter of a viewer, keeping the total in sync.
+    function adjustViewerBytes(viewer, field, delta) { viewer[field] += delta; viewer.pendingBytes += delta; }
+
+    // Number of control messages waiting in the viewer queue.
+    function viewerQueueLength(viewer) { return viewer.sendQueue.length - viewer.sendQueueHead; }
+
+    // Drop all pending send state of a viewer. Late timers and send callbacks become no-ops.
+    function clearViewerSendState(viewer) {
+        if (viewer.sendTimer != null) { clearTimeout(viewer.sendTimer); viewer.sendTimer = null; }
+        if (viewer.sendQueue != null) { viewer.sendQueue.length = 0; }
+        viewer.sendQueueHead = 0;
+        viewer.pendingBytes = 0;
+        viewer.queueBytes = 0;
+        viewer.linkedBytes = 0;
+        viewer.inflightBytes = 0;
+        viewer.dataPtr = null;
+    }
+
+    // Disconnect a viewer exactly once, releasing everything it had pending.
+    function closeViewer(viewer, reason) {
+        if (viewer.closing == true) return;
+        viewer.closing = true;
+        clearViewerSendState(viewer);
+        parent.parent.debug('relay', 'DesktopRelay: ' + reason);
+        try { viewer.close(); } catch (ex) { }
+    }
+
+    // Retained work is the larger of our accounting and the transport buffer, they overlap so they are not added.
+    function viewerOverLimit(viewer, extra) {
+        return ((Math.max(viewer.pendingBytes, viewer.ws.bufferedAmount || 0) + extra) > obj.maxViewerQueueBytes);
+    }
+
+    // Skip pending images that a newer full screen image replaces, for this viewer only (the shared list is not changed).
+    function coalesceViewerImages(viewer) {
+        if ((viewer.dataPtr == null) || (obj.images == null)) return;
+        var newest = null;
+        for (var p = viewer.dataPtr; p != null; p = obj.images[p].next) { var e = obj.images[p]; if ((e.full === true) && (e.gen == obj.lastScreenSizeCounter)) { newest = p; } }
+        if ((newest == null) || (newest == viewer.dataPtr)) return;
+        var ptr = viewer.dataPtr;
+        if (ptr == obj.firstData) {
+            // The screen size command is still unsent, it must not be dropped. Queue it so it goes out before the replacement.
+            var head = obj.images[ptr];
+            viewer.sendQueue.push(head.data);
+            adjustViewerBytes(viewer, 'linkedBytes', -head.bytes);
+            adjustViewerBytes(viewer, 'queueBytes', head.bytes);
+            ptr = head.next;
+        }
+        while (ptr != newest) { var s = obj.images[ptr]; adjustViewerBytes(viewer, 'linkedBytes', -s.bytes); ptr = s.next; }
+        viewer.dataPtr = newest;
+    }
+
+    // Check that a viewer can keep up to "extra" more pending bytes. Coalesce images if needed, disconnect the viewer if that is not enough.
+    function admitViewer(viewer, extra) {
+        if (viewer.closing == true) return false;
+        if (!viewerOverLimit(viewer, extra)) return true;
+        coalesceViewerImages(viewer);
+        if (!viewerOverLimit(viewer, extra)) return true;
+        closeViewer(viewer, 'viewer queue byte limit exceeded, pending ' + Math.max(viewer.pendingBytes, viewer.ws.bufferedAmount || 0) + ' + ' + extra + ' bytes, limit ' + obj.maxViewerQueueBytes);
+        return false;
     }
 
     // Send data to the viewer or queue it up for sending
     obj.sendToViewer = function (viewer, data) {
-        if ((viewer == null) || (obj.viewers == null)) return;
+        if ((viewer == null) || (obj.viewers == null) || (viewer.sendQueue == null) || (viewer.closing == true)) return;
         //console.log('SendToViewer', data.length);
+        const len = payloadBytes(data);
+        if (!admitViewer(viewer, len)) return;
         if (viewer.sending) {
             viewer.sendQueue.push(data);
+            adjustViewerBytes(viewer, 'queueBytes', len);
+            checkViewerOverflow(viewer);
         } else {
             viewer.sending = true;
-            if (viewer.slowRelay) {
-                setTimeout(function () { try { viewer.ws.send(data, function () { sendViewerNext(viewer); }); } catch (ex) { } }, viewer.slowRelay);
-            } else {
-                try { viewer.ws.send(data, function () { sendViewerNext(viewer); }); } catch (ex) { }
-            }
+            adjustViewerBytes(viewer, 'inflightBytes', len);
+            writeViewer(viewer, data, len);
 
             // Flow control, pause the agent if needed
             checkViewerOverflow(viewer);
         }
     }
 
+    // Write one payload to the viewer, its bytes are already counted as in flight. Exactly one write is in flight at a time.
+    function writeViewer(viewer, data, len) {
+        var called = false;
+        function done(err) {
+            if (called) return;
+            called = true;
+            if ((viewer.sendQueue == null) || (viewer.closing == true)) return;
+            if (err) { closeViewer(viewer, 'viewer send error'); return; }
+            adjustViewerBytes(viewer, 'inflightBytes', -len);
+            sendViewerNext(viewer);
+        }
+        function send() {
+            viewer.sendTimer = null;
+            if ((viewer.sendQueue == null) || (viewer.closing == true)) return;
+            try { viewer.ws.send(data, done); } catch (ex) { done(ex); }
+        }
+        if (viewer.slowRelay) { viewer.sendTimer = setTimeout(send, viewer.slowRelay); } else { send(); }
+    }
+
     // Check if a viewer is in overflow situation
     function checkViewerOverflow(viewer) {
-        if ((viewer.overflow == true) || (obj.viewers == null)) return;
-        if ((viewer.sendQueue.length > 5) || ((viewer.dataPtr != null) && (viewer.dataPtr != obj.lastData))) {
+        if ((viewer.overflow == true) || (viewer.sendQueue == null) || (viewer.closing == true) || (obj.viewers == null)) return;
+        if ((viewerQueueLength(viewer) > 5) || ((viewer.dataPtr != null) && (viewer.dataPtr != obj.lastData))) {
             viewer.overflow = true;
             obj.viewersOverflowCount++;
             if ((obj.viewersOverflowCount >= obj.viewers.length) && obj.agent && (obj.agent.paused == false)) { obj.agent.paused = true; obj.agent.ws._socket.pause(); }
@@ -479,8 +594,8 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
 
     // Check if a viewer is in underflow situation
     function checkViewerUnderflow(viewer) {
-        if ((viewer.overflow == false) || (obj.viewers == null)) return;
-        if ((viewer.sendQueue.length <= 5) && ((viewer.dataPtr == null) || (viewer.dataPtr == obj.lastData))) {
+        if ((viewer.overflow == false) || (viewer.sendQueue == null) || (viewer.closing == true) || (obj.viewers == null)) return;
+        if ((viewerQueueLength(viewer) <= 5) && ((viewer.dataPtr == null) || (viewer.dataPtr == obj.lastData))) {
             viewer.overflow = false;
             obj.viewersOverflowCount--;
             if ((obj.viewersOverflowCount < obj.viewers.length) && (obj.recordingFileWriting == false) && obj.agent && (obj.agent.paused == true)) { obj.agent.paused = false; obj.agent.ws._socket.resume(); }
@@ -489,15 +604,18 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
 
     // Send more data to the viewer
     function sendViewerNext(viewer) {
-        if ((viewer.sendQueue == null) || (obj.viewers == null)) return;
-        if (viewer.sendQueue.length > 0) {
-            // Send from the pending send queue
+        if ((viewer.sendQueue == null) || (viewer.closing == true) || (obj.viewers == null)) return;
+        if (viewerQueueLength(viewer) > 0) {
+            // Send from the pending send queue, read with a cursor and release the consumed slot.
+            const data = viewer.sendQueue[viewer.sendQueueHead];
+            viewer.sendQueue[viewer.sendQueueHead++] = undefined;
+            if (viewer.sendQueueHead == viewer.sendQueue.length) { viewer.sendQueue.length = 0; viewer.sendQueueHead = 0; }
+            else if ((viewer.sendQueueHead >= 64) && ((viewer.sendQueueHead * 2) >= viewer.sendQueue.length)) { viewer.sendQueue.splice(0, viewer.sendQueueHead); viewer.sendQueueHead = 0; }
+            const len = payloadBytes(data);
+            adjustViewerBytes(viewer, 'queueBytes', -len);
+            adjustViewerBytes(viewer, 'inflightBytes', len);
             if (viewer.sending == false) { viewer.sending = true; }
-            if (viewer.slowRelay) {
-                setTimeout(function () { try { viewer.ws.send(viewer.sendQueue.shift(), function () { sendViewerNext(viewer); }); } catch (ex) { } }, viewer.slowRelay);
-            } else {
-                try { viewer.ws.send(viewer.sendQueue.shift(), function () { sendViewerNext(viewer); }); } catch (ex) { }
-            }
+            writeViewer(viewer, data, len);
             checkViewerOverflow(viewer);
         } else {
             if (viewer.dataPtr != null) {
@@ -507,14 +625,12 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
                 viewer.lastImageNumberSent = viewer.dataPtr;
                 //if ((image.next != null) && ((viewer.dataPtr + 1) != image.next)) { console.log('SVIEW-S2', viewer.dataPtr, image.next); } // DEBUG
                 viewer.dataPtr = image.next;
-                if (viewer.slowRelay) {
-                    setTimeout(function () { try { viewer.ws.send(image.data, function () { sendViewerNext(viewer); }); } catch (ex) { } }, viewer.slowRelay);
-                } else {
-                    try { viewer.ws.send(image.data, function () { sendViewerNext(viewer); }); } catch (ex) { }
-                }
+                adjustViewerBytes(viewer, 'linkedBytes', -image.bytes);
+                adjustViewerBytes(viewer, 'inflightBytes', image.bytes);
+                if (viewer.sending == false) { viewer.sending = true; }
+                writeViewer(viewer, image.data, image.bytes);
 
                 // Flow control, pause the agent if needed
-                if (viewer.sending == false) { viewer.sending = true; }
                 checkViewerOverflow(viewer);
             } else {
                 // Nothing to send
@@ -705,12 +821,21 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
                 obj.counter++;
                 
                 // Keep a reference to this image & how many tiles it covers
-                obj.images[obj.counter] = { next: null, prev: obj.lastData, data: jumboData };
+                // Only a tile at (0,0) of exactly the current screen size is known to replace every older image of this screen size.
+                obj.images[obj.counter] = { next: null, prev: obj.lastData, data: jumboData, bytes: jumboData.length, full: ((x == 0) && (y == 0) && (dimensions.width == obj.width) && (dimensions.height == obj.height)), gen: obj.lastScreenSizeCounter };
                 obj.images[obj.lastData].next = obj.counter;
                 obj.lastData = obj.counter;
                 obj.imagesCounters[obj.counter] = (sw * sh);
                 obj.imagesCount++;
                 if (obj.imagesCount == 2000000000) { obj.imagesCount = 1; } // Loop the counter if needed
+
+                // Charge the new image to every viewer that will receive it, a viewer that had caught up starts at this image.
+                for (var i in obj.viewers) {
+                    const v = obj.viewers[i];
+                    if (v.closing == true) continue;
+                    if (v.dataPtr == null) { v.dataPtr = obj.counter; }
+                    adjustViewerBytes(v, 'linkedBytes', jumboData.length);
+                }
 
                 //console.log('Adding Image ' + obj.counter, x, y, dimensions.width, dimensions.height);
 
@@ -731,16 +856,22 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
                             delete obj.imagesCounters[oi];
 
                             // If any viewers are currently on image "oi" must be moved to "d.next"
-                            for (var l in obj.viewers) { const v = obj.viewers[l]; if (v.dataPtr == oi) { v.dataPtr = d.next; } }
+                            // A viewer that has not passed "oi" no longer has to receive it. An image already sent (in flight) is not touched.
+                            for (var l in obj.viewers) {
+                                const v = obj.viewers[l];
+                                if (v.closing == true) continue;
+                                if ((v.dataPtr != null) && (v.dataPtr <= oi)) { adjustViewerBytes(v, 'linkedBytes', -d.bytes); }
+                                if (v.dataPtr == oi) { v.dataPtr = d.next; }
+                            }
                         }
                     }
                 }
 
-                // Any viewer on dataPtr null, change to this image
-                for (var i in obj.viewers) {
-                    const v = obj.viewers[i];
-                    if (v.dataPtr == null) { v.dataPtr = obj.counter; if (v.sending == false) { sendViewerNext(v); } }
-                }
+                // Enforce the viewer byte limit, then start any viewer that was idle.
+                eachViewer(function (v) {
+                    if (!admitViewer(v, 0)) return;
+                    if ((v.sending == false) && (v.dataPtr != null)) { sendViewerNext(v); }
+                });
 
                 // Debug, display the link list
                 //var xx = '', xptr = obj.firstData;
@@ -769,16 +900,20 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
                 obj.imagesCount = 0;
                 obj.imagesCounters = {};
                 obj.images = {};
-                obj.images[obj.counter] = { next: null, prev: null, data: data };
+                obj.images[obj.counter] = { next: null, prev: null, data: data, bytes: data.length, full: false, gen: obj.lastScreenSizeCounter };
                 obj.firstData = obj.counter;
                 obj.lastData = obj.counter;
                 
                 // Add viewers must be set to start at "obj.counter"
-                for (var i in obj.viewers) {
-                    const v = obj.viewers[i];
+                // The old unsent images are gone, the backlog is now just the screen size command.
+                eachViewer(function (v) {
+                    if (v.closing == true) return;
+                    adjustViewerBytes(v, 'linkedBytes', -v.linkedBytes);
                     v.dataPtr = obj.counter;
+                    adjustViewerBytes(v, 'linkedBytes', data.length);
+                    if (!admitViewer(v, 0)) return;
                     if (v.sending == false) { sendViewerNext(v); }
-                }
+                });
 
                 //console.log("ScreenSize", obj.width, obj.height, obj.swidth, obj.sheight, obj.swidth * obj.sheight);
                 break;
