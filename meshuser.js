@@ -3720,7 +3720,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                                 var file = parent.getServerFilePath(user, domain, command.path);
                                 if (file != null) {
                                     fs.readFile(file.fullpath, 'utf8', function (err, data) {
-                                        if (err != null) {
+                                        if (err == null) {
                                             data = common.IntToStr(0) + data; // Add the 4 bytes encoding type & flags (Set to 0 for raw)
                                             parent.sendMeshAgentCore(user, domain, node._id, 'custom', data);
                                         }
@@ -6473,8 +6473,8 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                 if (command.resetNextLogin === true) { newuser.passchange = -1; } else { newuser.passchange = Math.floor(Date.now() / 1000); }
                 if (user.groups) { newuser.groups = user.groups; } // New accounts are automatically part of our groups (Realms).
                 if (common.validateString(command.realname, 1, 256)) { newuser.realname = command.realname; }
-                if ((command.consent != null) && (typeof command.consent == 'number')) { if (command.consent == 0) { delete chguser.consent; } else { newuser.consent = command.consent; } change = 1; }
-                if ((command.phone != null) && (typeof command.phone == 'string') && ((command.phone == '') || isPhoneNumber(command.phone))) { if (command.phone == '') { delete newuser.phone; } else { newuser.phone = command.phone; } change = 1; }
+                if ((command.consent != null) && (typeof command.consent == 'number')) { if (command.consent == 0) { delete newuser.consent; } else { newuser.consent = command.consent; } }
+                if ((command.phone != null) && (typeof command.phone == 'string') && ((command.phone == '') || isPhoneNumber(command.phone))) { if (command.phone == '') { delete newuser.phone; } else { newuser.phone = command.phone; } }
 
                 // Auto-join any user groups
                 if (typeof newuserdomain.newaccountsusergroups == 'object') {
@@ -6569,7 +6569,8 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
         }
 
         // Check if we exceed the maximum number of user accounts
-        db.isMaxType(domain.limits.maxuseraccounts + userCount, 'user', domain.id, function (maxExceed) {
+        const maxUserAccounts = domain.limits.maxuseraccounts;
+        db.isMaxType((maxUserAccounts == null) ? null : (maxUserAccounts - userCount), 'user', domain.id, function (maxExceed) {
             if (maxExceed) {
                 // Account count exceed, do notification
 
@@ -8748,6 +8749,35 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
 
     // Return detailed information about all nodes this user has access to
     function getAllDeviceDetailedInfo(type, func) {
+        var results = [], resultPendingCount = 0;
+
+        // Fetch details for the complete list of node ids. The pending count is set before any callback is started.
+        function getDetailedInfo(nodeids) {
+            resultPendingCount = nodeids.length;
+            if (resultPendingCount == 0) { func(results, type); return; }
+            const nodeDone = function () { if (--resultPendingCount == 0) { func(results, type); } };
+            for (var i = 0; i < nodeids.length; i++) {
+                const nodeid = nodeids[i];
+                parent.GetNodeWithRights(domain, user, nodeid, function (node, rights, visible) {
+                    if ((node != null) && (visible == true)) {
+                        // Query the database for system information
+                        db.Get('si' + nodeid, function (err, docs) {
+                            var sysinfo = null;
+                            if ((err == null) && (docs != null) && (docs.length == 1)) { sysinfo = docs[0]; }
+
+                            // Query the database for network information
+                            db.Get('if' + nodeid, function (err, docs) {
+                                var netinfo = null;
+                                if ((err == null) && (docs != null) && (docs.length == 1)) { netinfo = docs[0]; }
+                                results.push({ node: parent.CloneSafeNode(node), sys: sysinfo, net: netinfo });
+                                nodeDone();
+                            });
+                        });
+                    } else { nodeDone(); }
+                });
+            }
+        }
+
         // If we are not paging, get all devices visible to this user
         if (obj.visibleDevices == null) {
 
@@ -8762,85 +8792,17 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                 if (docs == null) { docs = []; }
                 parent.common.unEscapeAllLinksFieldName(docs);
 
-                var results = [], resultPendingCount = 0;
-                if (docs.length == 0) { // no results return blank array
-                    func(docs, type);
-                } else {
-                    for (i in docs) {
-                        // Check device links, if a link points to an unknown user, remove it.
-                        parent.cleanDevice(docs[i]);
-
-                        // Fetch the node from the database
-                        resultPendingCount++;
-                        const getNodeFunc = function (node, rights, visible) {
-                            if ((node != null) && (visible == true)) {
-                                const getNodeSysInfoFunc = function (err, docs) {
-                                    const getNodeNetInfoFunc = function (err, docs) {
-                                        var netinfo = null;
-                                        if ((err == null) && (docs != null) && (docs.length == 1)) { netinfo = docs[0]; }
-                                        resultPendingCount--;
-                                        getNodeNetInfoFunc.results.push({ node: parent.CloneSafeNode(getNodeNetInfoFunc.node), sys: getNodeNetInfoFunc.sysinfo, net: netinfo });
-                                        if (resultPendingCount == 0) { func(getNodeFunc.results, type); }
-                                    }
-                                    getNodeNetInfoFunc.results = getNodeSysInfoFunc.results;
-                                    getNodeNetInfoFunc.nodeid = getNodeSysInfoFunc.nodeid;
-                                    getNodeNetInfoFunc.node = getNodeSysInfoFunc.node;
-                                    if ((err == null) && (docs != null) && (docs.length == 1)) { getNodeNetInfoFunc.sysinfo = docs[0]; }
-
-                                    // Query the database for network information
-                                    db.Get('if' + getNodeSysInfoFunc.nodeid, getNodeNetInfoFunc);
-                                }
-                                getNodeSysInfoFunc.results = getNodeFunc.results;
-                                getNodeSysInfoFunc.nodeid = getNodeFunc.nodeid;
-                                getNodeSysInfoFunc.node = node;
-
-                                // Query the database for system information
-                                db.Get('si' + getNodeFunc.nodeid, getNodeSysInfoFunc);
-                            } else { resultPendingCount--; }
-                            if (resultPendingCount == 0) { func(getNodeFunc.results.join('\r\n'), type); }
-                        }
-                        getNodeFunc.results = results;
-                        getNodeFunc.nodeid = docs[i]._id;
-                        parent.GetNodeWithRights(domain, user, docs[i]._id, getNodeFunc);
-                    }
+                var nodeids = [];
+                for (var i = 0; i < docs.length; i++) {
+                    // Check device links, if a link points to an unknown user, remove it.
+                    parent.cleanDevice(docs[i]);
+                    nodeids.push(docs[i]._id);
                 }
+                getDetailedInfo(nodeids);
             });
         } else {
             // If we are paging, we know what devices the user is look at
-            for (var id in obj.visibleDevices) {
-                // Fetch the node from the database
-                resultPendingCount++;
-                const getNodeFunc = function (node, rights, visible) {
-                    if ((node != null) && (visible == true)) {
-                        const getNodeSysInfoFunc = function (err, docs) {
-                            const getNodeNetInfoFunc = function (err, docs) {
-                                var netinfo = null;
-                                if ((err == null) && (docs != null) && (docs.length == 1)) { netinfo = docs[0]; }
-                                resultPendingCount--;
-                                getNodeNetInfoFunc.results.push({ node: parent.CloneSafeNode(getNodeNetInfoFunc.node), sys: getNodeNetInfoFunc.sysinfo, net: netinfo });
-                                if (resultPendingCount == 0) { func(getNodeFunc.results, type); }
-                            }
-                            getNodeNetInfoFunc.results = getNodeSysInfoFunc.results;
-                            getNodeNetInfoFunc.nodeid = getNodeSysInfoFunc.nodeid;
-                            getNodeNetInfoFunc.node = getNodeSysInfoFunc.node;
-                            if ((err == null) && (docs != null) && (docs.length == 1)) { getNodeNetInfoFunc.sysinfo = docs[0]; }
-
-                            // Query the database for network information
-                            db.Get('if' + getNodeSysInfoFunc.nodeid, getNodeNetInfoFunc);
-                        }
-                        getNodeSysInfoFunc.results = getNodeFunc.results;
-                        getNodeSysInfoFunc.nodeid = getNodeFunc.nodeid;
-                        getNodeSysInfoFunc.node = node;
-
-                        // Query the database for system information
-                        db.Get('si' + getNodeFunc.nodeid, getNodeSysInfoFunc);
-                    } else { resultPendingCount--; }
-                    if (resultPendingCount == 0) { func(getNodeFunc.results.join('\r\n'), type); }
-                }
-                getNodeFunc.results = results;
-                getNodeFunc.nodeid = id;
-                parent.GetNodeWithRights(domain, user, id, getNodeFunc);
-            }
+            getDetailedInfo(Object.keys(obj.visibleDevices));
         }
     }
 
