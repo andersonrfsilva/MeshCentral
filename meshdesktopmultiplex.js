@@ -377,7 +377,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
             obj.agent.sendQueue.push(data);
 
             // Flow control, pause all viewers is the queue is backing up
-            if (obj.agent.sendQueue > 10) {
+            if (obj.agent.sendQueue.length > 10) {
                 obj.agent.overflow = true;
                 for (var i in obj.viewers) {
                     var v = obj.viewers[i];
@@ -385,6 +385,7 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
                 }
             }
         } else {
+            obj.agent.sending = true;
             obj.agent.ws.send(data, sendAgentNext);
         }
     }

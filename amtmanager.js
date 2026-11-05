@@ -611,8 +611,8 @@ module.exports.CreateAmtManager = function (parent) {
 
                 // See if we need to perform TLS or not. We prefer not to do TLS within CIRA.
                 var dotls = -1;
-                if (ciraconn.tag.boundPorts.indexOf('16992')) { dotls = 0; }
-                else if (ciraconn.tag.boundPorts.indexOf('16993')) { dotls = 1; }
+                if (ciraconn.tag.boundPorts.indexOf('16992') >= 0) { dotls = 0; }
+                else if (ciraconn.tag.boundPorts.indexOf('16993') >= 0) { dotls = 1; }
                 if (dotls == -1) { removeAmtDevice(dev, 10); return; } // The Intel AMT ports are not open, not a device we can deal with.
 
                 // Connect now

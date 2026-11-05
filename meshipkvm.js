@@ -294,7 +294,7 @@ function CreateIPKVMManager(parent) {
         urlargs.shift();
         var relurl = '/' + urlargs.join('/');
         if (relurl.endsWith('/.websocket')) { relurl = relurl.substring(0, relurl.length - 11); }
-        return { domain: domain.id, relurl: relurl, preurl: q.path.substring(0, i + 76), nodeid: nodeid, nid: nid, kvmmanager: kvmmanager, kvmport: kvmport };
+        return { domain: domain.id, relurl: relurl, preurl: q.pathname.substring(0, i + 76), nodeid: nodeid, nid: nid, kvmmanager: kvmmanager, kvmport: kvmport };
     }
 
     // Handle a IP-KVM HTTP get request
