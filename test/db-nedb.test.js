@@ -20,6 +20,14 @@ function call(fn) {
     });
 }
 
+async function drainStores(stores) {
+    for (const store of stores) {
+        await new Promise(function (resolve) { store.find({}, resolve); });
+        // A read buffered before autoload can finish before forced index writes; queue another after autoload.
+        await new Promise(function (resolve) { store.find({}, resolve); });
+    }
+}
+
 // Runs body with a real NeDB-backed db in a unique temp directory. Stops compaction timers before disposal.
 async function withDb(body) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'meshcentral-test-'));
@@ -32,15 +40,50 @@ async function withDb(body) {
         try { await body(db); }
         finally {
             // Drain initialization and queued operations on every store, then stop the timers.
-            for (const store of stores) { await new Promise(function (resolve) { store.find({}, resolve); }); }
+            await drainStores(stores);
             for (const store of stores) { store.stopAutocompaction(); }
         }
     } finally {
-        // Characterization: for NeDB, db.dispose() throws a TypeError on null members (e.g. newAutoBackupFile) in the current source.
-        if (db != null) { try { db.dispose(); } catch (ex) { assert.ok(ex instanceof TypeError); } }
+        if (db != null) { db.dispose(); }
         fs.rmSync(dir, { recursive: true, force: true });
     }
 }
+
+test('dispose tolerates empty members and is repeatable', async function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'meshcentral-test-'));
+    let db = null;
+    let stores = [];
+    let drained = false;
+    try {
+        db = await new Promise(function (resolve) { require('../db.js').CreateDB(createDbParent(dir), resolve); });
+        stores = [db.file, db.eventsfile, db.powerfile, db.serverstatsfile];
+        await drainStores(stores);
+        drained = true;
+        for (const store of stores) { store.stopAutocompaction(); }
+
+        let closeCalls = 0;
+        const closeSpy = { close: function () { assert.strictEqual(this, closeSpy); closeCalls++; } };
+        db.nullMember = null;
+        db.undefinedMember = undefined;
+        db.nonCallableClose = { close: true };
+        db.closeSpy = closeSpy;
+        assert.doesNotThrow(function () { db.dispose(); });
+        assert.doesNotThrow(function () { db.dispose(); });
+        assert.strictEqual(closeCalls, 1);
+        assert.deepStrictEqual(Object.keys(db), ['dispose']);
+    } finally {
+        try {
+            if (!drained) {
+                await drainStores(stores);
+                drained = true;
+            }
+        } finally {
+            for (const store of stores) { store.stopAutocompaction(); }
+            try { if ((db != null) && drained) { db.dispose(); } }
+            finally { fs.rmSync(dir, { recursive: true, force: true }); }
+        }
+    }
+});
 
 test('Set, Get and overwrite keep a single row', function () {
     return withDb(async function (db) {
