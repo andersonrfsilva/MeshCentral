@@ -1151,7 +1151,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                         if (nodeSplit.length == 1) { command.nodeid = 'node/' + domain.id + '/' + command.nodeid; }
 
                         parent.GetNodeWithRights(domain, user, command.nodeid, function (node, rights, visible) {
-                            if (node == null) { try { ws.send(JSON.stringify({ action: 'events', events: [], nodeid: command.nodeid, tag: command.tag })); } catch (ex) { } return; }
+                            if ((node == null) || (visible == false)) { try { ws.send(JSON.stringify({ action: 'events', events: [], nodeid: command.nodeid, tag: command.tag })); } catch (ex) { } return; }
 
                             // Put a limit on the number of returned entries if present
                             var limit = 10000;
