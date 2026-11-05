@@ -197,14 +197,50 @@ module.exports.CreateWebAuthnModule = function () {
         return response;
     }
 
+    // Decode a standard base64 or base64url string into bytes; null if malformed.
+    function decodeBase64Any(str) {
+        if ((typeof str !== 'string') || (str.length == 0)) { return null; }
+        const stripped = str.replace(/=+$/, '');
+        if (!/^[A-Za-z0-9+/_-]+$/.test(stripped)) { return null; }
+        const std = stripped.replace(/-/g, '+').replace(/_/g, '/');
+        const buf = Buffer.from(std, 'base64');
+        if (buf.length == 0) { return null; }
+        if (buf.toString('base64').replace(/=+$/, '') !== std) { return null; }
+        return buf;
+    }
+
+    // Verify the assertion signature and that it is bound to the expected challenge, origin, RP and counter.
+    // Any malformed or missing input returns { verified: false }.
     obj.verifyAuthenticatorAssertionResponse = function (webauthnResponse, authr) {
         const response = { 'verified': false }
-        if (['fido-u2f'].includes(authr.fmt)) {
-            const authrDataStruct = parseGetAssertAuthData(webauthnResponse.authenticatorData);
-            if (!(authrDataStruct.flags & 0x01)) { throw new Error('User was not presented durring authentication!'); } // U2F_USER_PRESENTED
+        try {
+            if ((webauthnResponse == null) || (authr == null) || (authr.fmt !== 'fido-u2f')) { return response; }
+            const authData = webauthnResponse.authenticatorData, clientDataJSON = webauthnResponse.clientDataJSON, signature = webauthnResponse.signature;
+            if (!Buffer.isBuffer(authData) || !Buffer.isBuffer(clientDataJSON) || !Buffer.isBuffer(signature) || (authData.length < 37)) { return response; }
+            if ((typeof authr.origin !== 'string') || (authr.publicKey == null)) { return response; }
+
+            // Counter policy: must advance, except both zero (counterless authenticators)
+            const prev = authr.prevCounter;
+            if ((typeof prev !== 'number') || !Number.isInteger(prev) || (prev < 0) || (prev > 0xFFFFFFFF)) { return response; }
+
+            // Client data
+            const clientData = JSON.parse(clientDataJSON.toString('utf8'));
+            if ((clientData == null) || (clientData.type !== 'webauthn.get') || (clientData.origin !== authr.origin)) { return response; }
+            const expectedChallenge = decodeBase64Any(authr.challenge), actualChallenge = decodeBase64Any(clientData.challenge);
+            if ((expectedChallenge == null) || (actualChallenge == null) || (expectedChallenge.length != actualChallenge.length) || !crypto.timingSafeEqual(expectedChallenge, actualChallenge)) { return response; }
+
+            // Authenticator data: RP ID hash (no port), user presence, counter
+            const authrDataStruct = parseGetAssertAuthData(authData);
+            const expectedRpIdHash = hash(new URL(authr.origin).hostname);
+            if (!crypto.timingSafeEqual(authrDataStruct.rpIdHash, expectedRpIdHash)) { return response; }
+            if (!(authrDataStruct.flags & 0x01)) { return response; } // U2F_USER_PRESENTED
+            if (!((authrDataStruct.counter > prev) || ((authrDataStruct.counter == 0) && (prev == 0)))) { return response; }
+
+            // Signature covers the full original authenticator data and hash of the original client data
+            if (verifySignature(signature, Buffer.concat([authData, hash(clientDataJSON)]), authr.publicKey) !== true) { return response; }
             response.counter = authrDataStruct.counter;
-            response.verified = verifySignature(webauthnResponse.signature, Buffer.concat([authrDataStruct.rpIdHash, authrDataStruct.flagsBuf, authrDataStruct.counterBuf, hash(webauthnResponse.clientDataJSON)]), authr.publicKey);
-        }
+            response.verified = true;
+        } catch (ex) { response.verified = false; delete response.counter; }
         return response;
     }
 
