@@ -21,6 +21,29 @@ https://raw.githubusercontent.com/ryanblenis/MeshCentral-DevTools/master/config.
 */
 
 
+var nodePath = require('path');
+
+// Plugin identifiers become directory names and require() paths, so only a conservative character set is allowed.
+function isValidPluginId(name) {
+    return (typeof name == 'string') && /^[a-z0-9_-]{1,64}$/i.test(name);
+}
+
+// Maps a ZIP entry name to a path inside root, dropping exactly one leading directory (the archive wrapper).
+// Lexical containment only: existing symlinks on disk are not resolved. Throws on any unsafe name.
+function safePluginEntryPath(root, name) {
+    if ((typeof name != 'string') || (name.length == 0)) throw new Error('Invalid archive entry name');
+    if ((name.indexOf('\0') >= 0) || (name.indexOf('\\') >= 0)) throw new Error('Unsafe archive entry name: ' + JSON.stringify(name));
+    if ((name[0] == '/') || /^[a-zA-Z]:/.test(name)) throw new Error('Absolute archive entry name: ' + JSON.stringify(name));
+    if (name.split('/').indexOf('..') >= 0) throw new Error('Archive entry escapes plugin directory: ' + JSON.stringify(name));
+    var slash = name.indexOf('/');
+    var rel = (slash >= 0) ? name.substring(slash + 1) : name;
+    var resolvedRoot = nodePath.resolve(root);
+    var candidate = nodePath.resolve(resolvedRoot, rel);
+    var r = nodePath.relative(resolvedRoot, candidate);
+    if ((r == '..') || r.startsWith('..' + nodePath.sep) || nodePath.isAbsolute(r)) throw new Error('Archive entry escapes plugin directory: ' + JSON.stringify(name));
+    return candidate;
+}
+
 module.exports.pluginHandler = function (parent) {
     var obj = {};
 
@@ -38,6 +61,7 @@ module.exports.pluginHandler = function (parent) {
         parent.db.getPlugins(function (err, plugins) {
             plugins.forEach(function (plugin) {
                 if (plugin.status != 1) return;
+                if (!isValidPluginId(plugin.shortName)) { console.log('Skipping plugin with invalid identifier: ' + JSON.stringify(plugin.shortName)); return; }
                 if (obj.fs.existsSync(obj.pluginPath + '/' + plugin.shortName)) {
                     try {
                         obj.plugins[plugin.shortName] = require(obj.pluginPath + '/' + plugin.shortName + '/' + plugin.shortName + '.js')[plugin.shortName](obj);
@@ -56,6 +80,7 @@ module.exports.pluginHandler = function (parent) {
         });
     } else {
         obj.loadList.forEach(function (plugin, index) {
+            if (!isValidPluginId(plugin)) { console.log('Skipping plugin with invalid identifier: ' + JSON.stringify(plugin)); return; }
             if (obj.fs.existsSync(obj.pluginPath + '/' + plugin)) {
                 try {
                     obj.plugins[plugin] = require(obj.pluginPath + '/' + plugin + '/' + plugin + '.js')[plugin](obj);
@@ -222,25 +247,26 @@ module.exports.pluginHandler = function (parent) {
     };
 
     obj.isValidConfig = function (conf, url) { // check for the required attributes
+        if ((conf == null) || (typeof conf != 'object')) return false;
         var isValid = true;
         if (!(
             typeof conf.name == 'string'
             && typeof conf.shortName == 'string'
-            && typeof conf.version == 'string'
+            && isValidPluginId(conf.shortName)
             //  && typeof conf.author == 'string'
             && typeof conf.description == 'string'
             && typeof conf.hasAdminPanel == 'boolean'
             && typeof conf.homepage == 'string'
             && typeof conf.changelogUrl == 'string'
             && typeof conf.configUrl == 'string'
-            && typeof conf.repository == 'object'
+            && typeof conf.repository == 'object' && conf.repository != null
             && typeof conf.repository.type == 'string'
             && typeof conf.repository.url == 'string'
             && typeof conf.meshCentralCompat == 'string'
             //    && conf.configUrl == url  // make sure we're loading a plugin from its desired config
         )) isValid = false;
         // more checks here?
-        if (conf.repository.type == 'git') {
+        if (conf.repository && conf.repository.type == 'git') {
             if (typeof conf.downloadUrl != 'string') isValid = false;
         }
         return isValid;
@@ -390,22 +416,62 @@ module.exports.pluginHandler = function (parent) {
 
     obj.installPlugin = function (id, version_only, force_url, func) {
         parent.db.getPlugin(id, function (err, docs) {
-            // the "id" would probably suffice, but is probably an sanitary issue, generate a random instead
-            var randId = Math.random().toString(32).replace('0.', '');
-            var tmpDir = require('os').tmpdir();
-            var fileName = obj.parent.path.join(tmpDir, 'Plugin_' + randId + '.zip');
-            try {
-                obj.fs.accessSync(tmpDir, obj.fs.constants.W_OK);
-            } catch (e) {
-                var pluginTmpPath = obj.parent.path.join(obj.pluginPath, '_tmp');
-                if (!obj.fs.existsSync(pluginTmpPath)) {
-                    obj.fs.mkdirSync(pluginTmpPath, { recursive: true });
-                }
-                fileName = obj.parent.path.join(pluginTmpPath, 'Plugin_' + randId + '.zip');
+            var settled = false, failed = false, finalized = false;
+            var zipEnded = false, zipClosed = false, fileClosed = false, pendingWrites = 0;
+            var file = null, zipfile = null, request = null, fileName = null;
+            var streams = [];
+
+            function removeTemp() { if (fileName) { try { obj.fs.unlinkSync(fileName); } catch (ex) { } } }
+
+            // One-shot failure: stop all I/O, drop the temporary archive once its handles are closed, report the error once.
+            function fail(e) {
+                if (failed || finalized) return;
+                failed = true;
+                if (!(e instanceof Error)) e = new Error(String(e));
+                console.log('Error installing plugin: ' + e.message);
+                var waiting = 0;
+                function release() { if (--waiting === 0) removeTemp(); }
+                var closeFile = (file != null) && !fileClosed, closeZip = (zipfile != null) && !zipClosed;
+                if (closeFile) { waiting++; file.once('close', release); }
+                if (closeZip) { waiting++; zipfile.once('close', release); }
+                if (request) { try { request.destroy(); } catch (ex) { } }
+                streams.forEach(function (s) { try { s.destroy(); } catch (ex) { } });
+                if (closeFile) { try { file.destroy(); } catch (ex) { release(); } }
+                if (closeZip) { try { zipfile.close(); } catch (ex) { release(); } }
+                if (waiting === 0) removeTemp();
+                if (!settled) { settled = true; if (typeof func == 'function') func(e); }
             }
-            var plugin = docs[0];
-            if (plugin.repository.type == 'git') {
-                var file;
+
+            var plugin = (docs != null) ? docs[0] : null;
+            if (plugin == null) return fail(new Error('Plugin not found'));
+            if (!isValidPluginId(plugin.shortName)) return fail(new Error('Invalid plugin identifier'));
+            if (plugin.repository == null) return fail(new Error('Plugin has no repository'));
+            if (plugin.repository.type != 'git') return; // @TODO npm support (see below); nothing to download
+
+            var dl_url = plugin.downloadUrl;
+            if (version_only != null && version_only != false) dl_url = version_only.url;
+            if (force_url != null) dl_url = force_url;
+            var initialUrl;
+            try { initialUrl = new URL(dl_url); } catch (e) { return fail(new Error('Invalid plugin download URL')); }
+            if (initialUrl.protocol != 'https:') return fail(new Error('Plugin download URL must use HTTPS'));
+
+            var pluginDir = obj.parent.path.join(obj.pluginPath, plugin.shortName);
+
+            // Create the temporary archive file; called only once a successful response is in hand.
+            function openTemp() {
+                // the "id" would probably suffice, but is probably an sanitary issue, generate a random instead
+                var randId = Math.random().toString(32).replace('0.', '');
+                var tmpDir = require('os').tmpdir();
+                fileName = obj.parent.path.join(tmpDir, 'Plugin_' + randId + '.zip');
+                try {
+                    obj.fs.accessSync(tmpDir, obj.fs.constants.W_OK);
+                } catch (e) {
+                    var pluginTmpPath = obj.parent.path.join(obj.pluginPath, '_tmp');
+                    if (!obj.fs.existsSync(pluginTmpPath)) {
+                        obj.fs.mkdirSync(pluginTmpPath, { recursive: true });
+                    }
+                    fileName = obj.parent.path.join(pluginTmpPath, 'Plugin_' + randId + '.zip');
+                }
                 try {
                     file = obj.fs.createWriteStream(fileName);
                 } catch (e) {
@@ -420,100 +486,138 @@ module.exports.pluginHandler = function (parent) {
                         throw e;
                     }
                 }
-                var dl_url = plugin.downloadUrl;
-                if (version_only != null && version_only != false) dl_url = version_only.url;
-                if (force_url != null) dl_url = force_url;
-                var q = new URL(dl_url);
-                var http = (q.protocol == "http:") ? require('http') : require('https');
+                file.on('close', function () { fileClosed = true; });
+                file.on('error', fail);
+            }
+
+            // Runs once, after the ZIP has ended and every destination stream has finished.
+            function complete() {
+                removeTemp();
+                var onDone = function () { if (settled) return; settled = true; if (typeof func == 'function') { func(null); } };
+                if (version_only == null || version_only === false) {
+                    parent.db.setPluginStatus(id, 1, onDone);
+                } else {
+                    parent.db.updatePlugin(id, { status: 1, version: version_only.name }, onDone);
+                }
+                try {
+                    obj.plugins[plugin.shortName] = require(obj.pluginPath + '/' + plugin.shortName + '/' + plugin.shortName + '.js')[plugin.shortName](obj);
+                    obj.exports[plugin.shortName] = obj.plugins[plugin.shortName].exports;
+                    if (typeof obj.plugins[plugin.shortName].server_startup == 'function') obj.plugins[plugin.shortName].server_startup();
+                } catch (e) { console.log('Error instantiating new plugin: ', e); }
+                try {
+                    var plugin_config = obj.fs.readFileSync(obj.pluginPath + '/' + plugin.shortName + '/config.json');
+                    plugin_config = JSON.parse(plugin_config);
+                    parent.db.updatePlugin(plugin._id, plugin_config);
+                } catch (e) { console.log('Error reading plugin config upon install'); }
+                parent.updateMeshCore();
+            }
+
+            function maybeComplete() {
+                if (zipEnded && (pendingWrites === 0) && !failed && !finalized) { finalized = true; complete(); }
+            }
+
+            function extract() {
+                if (failed) return;
+                var yauzl = require('yauzl');
+                try {
+                    if (!obj.fs.existsSync(obj.pluginPath)) {
+                        obj.fs.mkdirSync(obj.pluginPath);
+                    }
+                    if (!obj.fs.existsSync(pluginDir)) {
+                        obj.fs.mkdirSync(pluginDir);
+                    }
+                } catch (e) { return fail(e); }
+                var resolvedDir = nodePath.resolve(pluginDir);
+                yauzl.open(fileName, { lazyEntries: true }, function (err, zf) {
+                    if (err) return fail(err);
+                    zipfile = zf;
+                    zipfile.on('close', function () { zipClosed = true; });
+                    zipfile.on('error', fail);
+                    if (failed) { try { zipfile.close(); } catch (ex) { } return; }
+                    zipfile.on('entry', function (entry) {
+                        if (failed) return;
+                        var filePath;
+                        try {
+                            filePath = safePluginEntryPath(pluginDir, entry.fileName); // removes top level dir
+                            if ((((entry.externalFileAttributes >>> 16) & 0xF000) === 0xA000)) throw new Error('Symlink entries are not allowed: ' + JSON.stringify(entry.fileName));
+                        } catch (e) { return fail(e); }
+
+                        if (/\/$/.test(entry.fileName)) { // dir
+                            try {
+                                if ((filePath !== resolvedDir) && !obj.fs.existsSync(filePath)) obj.fs.mkdirSync(filePath);
+                            } catch (e) { return fail(e); }
+                            zipfile.readEntry();
+                        } else { // file
+                            if (filePath === resolvedDir) return fail(new Error('Archive file entry maps to the plugin directory: ' + JSON.stringify(entry.fileName)));
+                            zipfile.openReadStream(entry, function (err, readStream) {
+                                if (err) return fail(err);
+                                if (failed) { readStream.destroy(); return; }
+                                var writeStream;
+                                try {
+                                    if (process.platform == 'win32') {
+                                        writeStream = obj.fs.createWriteStream(filePath);
+                                    } else {
+                                        var fileMode = (entry.externalFileAttributes >> 16) & 0x0fff;
+                                        if( fileMode <= 0 ) fileMode = 0o644;
+                                        writeStream = obj.fs.createWriteStream(filePath, { mode: fileMode });
+                                    }
+                                } catch (e) { readStream.destroy(); return fail(e); }
+                                streams.push(readStream, writeStream);
+                                pendingWrites++;
+                                writeStream.on('finish', function () { pendingWrites--; maybeComplete(); });
+                                writeStream.on('error', fail);
+                                readStream.on('error', fail);
+                                readStream.on('end', function () { if (!failed) zipfile.readEntry(); });
+                                readStream.pipe(writeStream);
+                            });
+                        }
+                    });
+                    zipfile.on('end', function () { zipEnded = true; maybeComplete(); });
+                    zipfile.readEntry();
+                });
+            }
+
+            // Follows only same-host HTTPS redirects, at most five.
+            function fetchArchive(currentUrl, redirects) {
                 var opts = {
-                    path: q.pathname,
-                    host: q.hostname,
-                    port: q.port,
+                    path: currentUrl.pathname + currentUrl.search,
+                    host: currentUrl.hostname,
+                    port: currentUrl.port,
                     headers: {
                         'User-Agent': 'MeshCentral'
                     },
-                    followRedirects: true,
                     method: 'GET'
                 };
                 if (typeof parent.config.settings.plugins.proxy == 'string' || process.env['HTTP_PROXY'] || process.env['HTTPS_PROXY'] || process.env['http_proxy'] || process.env['https_proxy']) { // Proxy support
                     opts.agent = new (require('https-proxy-agent').HttpsProxyAgent)(new URL(parent.config.settings.plugins.proxy) || process.env['HTTP_PROXY'] || process.env['HTTPS_PROXY'] || process.env['http_proxy'] || process.env['https_proxy']);
                 }
-                var done = false;
-                var request = http.get(opts, function (response) {
-                    // handle redirections with grace
-                    if (response.headers.location) {
-                        file.close(() => obj.fs.unlink(fileName, () => {}));
-                        return obj.installPlugin(id, version_only, response.headers.location, func);
+                request = require('https').get(opts, function (response) {
+                    if (failed) { response.resume(); return; }
+                    var status = response.statusCode;
+                    if ([301, 302, 303, 307, 308].indexOf(status) >= 0) {
+                        response.resume();
+                        var location = response.headers.location, next;
+                        if (typeof location != 'string' || location.length == 0) return fail(new Error('Plugin download redirect without Location'));
+                        if (redirects >= 5) return fail(new Error('Too many redirects while downloading plugin'));
+                        try { next = new URL(location, currentUrl); } catch (e) { return fail(new Error('Invalid redirect Location while downloading plugin')); }
+                        if (next.protocol != 'https:') return fail(new Error('Plugin download redirect must use HTTPS'));
+                        if (next.host != initialUrl.host) return fail(new Error('Plugin download redirect to a different host is not allowed'));
+                        try { fetchArchive(next, redirects + 1); } catch (e) { fail(e); }
+                        return;
                     }
-                    if ((response.statusCode != null) && (response.statusCode >= 400)) { return console.log('Error downloading plugin: HTTP ' + response.statusCode); }
+                    if ((typeof status != 'number') || (status < 200) || (status >= 300)) { response.resume(); return fail(new Error('Error downloading plugin: HTTP ' + status)); }
+                    try { openTemp(); } catch (e) { response.resume(); return fail(e); }
+                    streams.push(response);
+                    response.on('error', fail);
+                    response.on('close', function () { if (response.complete === false) fail(new Error('Plugin download interrupted')); });
+                    file.on('finish', function () { file.close(extract); });
                     response.pipe(file);
-                    file.on('finish', function () {
-                        file.close(function () {
-                            var yauzl = require('yauzl');
-                            if (!obj.fs.existsSync(obj.pluginPath)) {
-                                obj.fs.mkdirSync(obj.pluginPath);
-                            }
-                            if (!obj.fs.existsSync(obj.parent.path.join(obj.pluginPath, plugin.shortName))) {
-                                obj.fs.mkdirSync(obj.parent.path.join(obj.pluginPath, plugin.shortName));
-                            }
-                            yauzl.open(fileName, { lazyEntries: true }, function (err, zipfile) {
-                                if (err) throw err;
-                                zipfile.readEntry();
-                                zipfile.on('entry', function (entry) {
-                                    let pluginPath = obj.parent.path.join(obj.pluginPath, plugin.shortName);
-                                    let pathReg = new RegExp(/(.*?\/)/);
-                                    //if (process.platform == 'win32') { pathReg = new RegExp(/(.*?\\/); }
-                                    let filePath = obj.parent.path.join(pluginPath, entry.fileName.replace(pathReg, '')); // remove top level dir
-
-                                    if (/\/$/.test(entry.fileName)) { // dir
-                                        if (!obj.fs.existsSync(filePath))
-                                            obj.fs.mkdirSync(filePath);
-                                        zipfile.readEntry();
-                                    } else { // file
-                                        zipfile.openReadStream(entry, function (err, readStream) {
-                                            if (err) throw err;
-                                            readStream.on('end', function () { zipfile.readEntry(); });
-                                            if (process.platform == 'win32') {
-                                                readStream.pipe(obj.fs.createWriteStream(filePath));
-                                            } else {
-                                                var fileMode = (entry.externalFileAttributes >> 16) & 0x0fff;
-                                                if( fileMode <= 0 ) fileMode = 0o644;
-                                                readStream.pipe(obj.fs.createWriteStream(filePath, { mode: fileMode }));
-                                            }
-                                        });
-                                    }
-                                });
-                                zipfile.on('end', function () {
-                                    setTimeout(function () {
-                                        try { obj.fs.unlinkSync(fileName); } catch (ex) { }
-                                        if (version_only == null || version_only === false) {
-                                            parent.db.setPluginStatus(id, 1, function () { if (done) return; done = true; if (typeof func == 'function') { func(null); } });
-                                        } else {
-                                            parent.db.updatePlugin(id, { status: 1, version: version_only.name }, function () { if (done) return; done = true; if (typeof func == 'function') { func(null); } });
-                                        }
-                                        try {
-                                            obj.plugins[plugin.shortName] = require(obj.pluginPath + '/' + plugin.shortName + '/' + plugin.shortName + '.js')[plugin.shortName](obj);
-                                            obj.exports[plugin.shortName] = obj.plugins[plugin.shortName].exports;
-                                            if (typeof obj.plugins[plugin.shortName].server_startup == 'function') obj.plugins[plugin.shortName].server_startup();
-                                        } catch (e) { console.log('Error instantiating new plugin: ', e); }
-                                        try {
-                                            var plugin_config = obj.fs.readFileSync(obj.pluginPath + '/' + plugin.shortName + '/config.json');
-                                            plugin_config = JSON.parse(plugin_config);
-                                            parent.db.updatePlugin(plugin._id, plugin_config);
-                                        } catch (e) { console.log('Error reading plugin config upon install'); }
-                                        parent.updateMeshCore();
-                                    });
-                                });
-                                zipfile.on('error', function (e) { console.log('Error extracting plugin ZIP: ' + e.message); });
-                            });
-                        });
-                    });
                 });
-                request.on('error', function (e) { console.log('Error downloading plugin: ' + e.message); });
+                request.on('error', fail);
                 request.setTimeout(30000, function () { request.destroy(new Error('Timed out while downloading plugin')); });
-            } else if (plugin.repository.type == 'npm') {
-                // @TODO npm support? (need a test plugin)
             }
+
+            try { fetchArchive(initialUrl, 0); } catch (e) { fail(e); }
         });
     };
 
@@ -575,7 +679,12 @@ module.exports.pluginHandler = function (parent) {
 
     obj.removePlugin = function (id, func) {
         parent.db.getPlugin(id, function (err, docs) {
-            var plugin = docs[0];
+            var plugin = (docs != null) ? docs[0] : null;
+            if ((plugin == null) || !isValidPluginId(plugin.shortName)) {
+                console.log('Refusing to remove plugin with invalid identifier');
+                if (typeof func == 'function') func(new Error('Invalid plugin identifier'));
+                return;
+            }
             let pluginPath = obj.parent.path.join(obj.pluginPath, plugin.shortName);
             if (obj.fs.existsSync(pluginPath)) {
                 try {
@@ -592,6 +701,12 @@ module.exports.pluginHandler = function (parent) {
     // Reload a specific plugin without restarting the server
     // Useful for development and upgrading - call this after modifying plugin files
     obj.reloadPlugin = function (pluginName, func) {
+        if (!isValidPluginId(pluginName)) {
+            var badMsg = "Invalid plugin identifier";
+            console.log(badMsg);
+            if (func) func({ success: false, error: badMsg });
+            return;
+        }
         var pluginPath = obj.pluginPath + '/' + pluginName;
         var mainFile = pluginPath + '/' + pluginName + '.js';
 
@@ -956,3 +1071,6 @@ module.exports.pluginHandler = function (parent) {
     }
     return obj;
 };
+
+module.exports.isValidPluginId = isValidPluginId;
+module.exports.safePluginEntryPath = safePluginEntryPath;
