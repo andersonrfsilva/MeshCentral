@@ -8694,40 +8694,29 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
     // Return detailed information about an array of nodeid's
     function getDeviceDetailedInfo(nodeids, type, func) {
         if (nodeids == null) { getAllDeviceDetailedInfo(type, func); return; }
-        var results = [], resultPendingCount = 0;
-        for (var i in nodeids) {
+        var results = [], resultPendingCount = nodeids.length;
+        if (resultPendingCount == 0) { func(results, type); return; }
+        const nodeDone = function () { if (--resultPendingCount == 0) { func(results, type); } };
+        for (var i = 0; i < nodeids.length; i++) {
+            const nodeid = nodeids[i];
             // Fetch the node from the database
-            resultPendingCount++;
-            const getNodeFunc = function (node, rights, visible) {
+            parent.GetNodeWithRights(domain, user, nodeid, function (node, rights, visible) {
                 if ((node != null) && (visible == true)) {
-                    const getNodeSysInfoFunc = function (err, docs) {
-                        const getNodeNetInfoFunc = function (err, docs) {
-                            var netinfo = null;
-                            if ((err == null) && (docs != null) && (docs.length == 1)) { netinfo = docs[0]; }
-                            resultPendingCount--;
-                            getNodeNetInfoFunc.results.push({ node: parent.CloneSafeNode(getNodeNetInfoFunc.node), sys: getNodeNetInfoFunc.sysinfo, net: netinfo });
-                            if (resultPendingCount == 0) { func(getNodeFunc.results, type); }
-                        }
-                        getNodeNetInfoFunc.results = getNodeSysInfoFunc.results;
-                        getNodeNetInfoFunc.nodeid = getNodeSysInfoFunc.nodeid;
-                        getNodeNetInfoFunc.node = getNodeSysInfoFunc.node;
-                        if ((err == null) && (docs != null) && (docs.length == 1)) { getNodeNetInfoFunc.sysinfo = docs[0]; }
+                    // Query the database for system information
+                    db.Get('si' + nodeid, function (err, docs) {
+                        var sysinfo = null;
+                        if ((err == null) && (docs != null) && (docs.length == 1)) { sysinfo = docs[0]; }
 
                         // Query the database for network information
-                        db.Get('if' + getNodeSysInfoFunc.nodeid, getNodeNetInfoFunc);
-                    }
-                    getNodeSysInfoFunc.results = getNodeFunc.results;
-                    getNodeSysInfoFunc.nodeid = getNodeFunc.nodeid;
-                    getNodeSysInfoFunc.node = node;
-
-                    // Query the database for system information
-                    db.Get('si' + getNodeFunc.nodeid, getNodeSysInfoFunc);
-                } else { resultPendingCount--; }
-                if (resultPendingCount == 0) { func(getNodeFunc.results.join('\r\n'), type); }
-            }
-            getNodeFunc.results = results;
-            getNodeFunc.nodeid = nodeids[i];
-            parent.GetNodeWithRights(domain, user, nodeids[i], getNodeFunc);
+                        db.Get('if' + nodeid, function (err, docs) {
+                            var netinfo = null;
+                            if ((err == null) && (docs != null) && (docs.length == 1)) { netinfo = docs[0]; }
+                            results.push({ node: parent.CloneSafeNode(node), sys: sysinfo, net: netinfo });
+                            nodeDone();
+                        });
+                    });
+                } else { nodeDone(); }
+            });
         }
     }
 
