@@ -661,3 +661,35 @@ module.exports.replacePlaceholders = function (template, values) {
     }
   });
 }
+
+// Decode a legacy AES256-CBC / HMAC-SHA384 cookie. Returns the decoded object or null. Key must be a Buffer of 80 bytes or more.
+// Layout: base64(IV[16] || AES-256-CBC(key[48:80], MAC[48] || payload)), MAC = HMAC-SHA384(key[0:48], payload).
+// Everything stays as Buffers until the MAC is verified, only then is the payload decoded as UTF-8 JSON.
+module.exports.decodeCookieAESSHA = function (cookie, key, timeout, encoding, debug) {
+    if (typeof debug != 'function') { debug = function () { }; }
+    try {
+        if ((typeof cookie != 'string') || !Buffer.isBuffer(key) || (key.length < 80)) { return null; }
+        const raw = Buffer.from(cookie.replace(/\@/g, '+').replace(/\$/g, '/'), encoding ? encoding : 'base64');
+        if ((raw.length < 32) || (((raw.length - 16) % 16) != 0)) { return null; } // IV plus at least one cipher block, block aligned
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key.subarray(48, 80), raw.subarray(0, 16));
+        const msg = Buffer.concat([decipher.update(raw.subarray(16)), decipher.final()]);
+        if (msg.length <= 48) { return null; } // Must hold a MAC and a payload
+        const storedMac = msg.subarray(0, 48), payload = msg.subarray(48);
+        const expectedMac = crypto.createHmac('sha384', key.subarray(0, 48)).update(payload).digest();
+        if ((expectedMac.length != storedMac.length) || !crypto.timingSafeEqual(expectedMac, storedMac)) { debug('cookie', 'ERR: Bad cookie due to invalid HMAC'); return null; }
+        const o = JSON.parse(payload.toString('utf8'));
+        if ((o == null) || (typeof o != 'object') || (typeof o.time != 'number')) { debug('cookie', 'ERR: Bad cookie due to invalid time'); return null; }
+        o.time = o.time * 1000; // Decode the cookie creation time
+        o.dtime = Date.now() - o.time; // Decode how long ago the cookie was created (in milliseconds)
+        if ((o.expire) == null || (typeof o.expire != 'number')) {
+            // Use a fixed cookie expire time
+            if (timeout == null) { timeout = 2; }
+            if ((o.dtime > (timeout * 60000)) || (o.dtime < -30000)) { debug('cookie', 'ERR: Bad cookie due to timeout'); return null; } // The cookie is only valid 120 seconds, or 30 seconds back in time (in case other server's clock is not quite right)
+        } else {
+            // An expire time is included in the cookie (in minutes), use this.
+            if ((o.expire !== 0) && ((o.dtime > (o.expire * 60000)) || (o.dtime < -30000))) { debug('cookie', 'ERR: Bad cookie due to timeout'); return null; } // The cookie is only valid 120 seconds, or 30 seconds back in time (in case other server's clock is not quite right)
+        }
+        debug('cookie', 'Decoded AESSHA cookie: ' + JSON.stringify(o));
+        return o;
+    } catch (ex) { debug('cookie', 'ERR: Bad AESSHA cookie due to exception: ' + ex); return null; }
+};
