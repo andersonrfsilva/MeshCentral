@@ -8751,7 +8751,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
         var results = [], resultPendingCount = 0;
 
         // Fetch details for the complete list of node ids. The pending count is set before any callback is started.
-        function getDetailedInfo(nodeids) {
+        function getDetailedInfo(nodeids, suppliedNodes) {
             resultPendingCount = nodeids.length;
             if (resultPendingCount == 0) { func(results, type); return; }
             const nodeDone = function () { if (--resultPendingCount == 0) { func(results, type); } };
@@ -8773,7 +8773,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                             });
                         });
                     } else { nodeDone(); }
-                });
+                }, suppliedNodes == null ? undefined : suppliedNodes[i]); // Reuse listing documents; authorization still runs.
             }
         }
 
@@ -8797,7 +8797,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
                     parent.cleanDevice(docs[i]);
                     nodeids.push(docs[i]._id);
                 }
-                getDetailedInfo(nodeids);
+                getDetailedInfo(nodeids, docs);
             });
         } else {
             // If we are paging, we know what devices the user is look at
