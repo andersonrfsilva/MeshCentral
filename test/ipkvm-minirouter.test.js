@@ -31,7 +31,7 @@ function createFixture(onReady, synchronousClose) {
     const m = { exports: {} }, x = {};
     const localRequire = Module.createRequire(full);
     wrapper(m, m.exports, function (name) {
-        if (name === 'net') { return { Server: Server }; }
+        if (name === 'net') { return { Server: Server, isIP: require('net').isIP }; }
         if (name === 'ws') { return WebSocket; }
         return localRequire(name);
     }, x);
@@ -42,9 +42,10 @@ function createFixture(onReady, synchronousClose) {
         encodeCookie: function () { return 'test-cookie'; },
         loginCookieEncryptionKey: 'test-key',
         config: { domains: { '': { id: '' } } },
+        certificates: { CommonName: 'test.local' },
         args: { port: 443 }
     } };
-    const router = x.CreateMiniRouter(parent, 'node//test', '127.0.0.1', 5900);
+    const router = x.CreateMiniRouter(parent, 'node//test', '127.0.0.1', 5900, { rejectUnauthorized: true });
     router.start(function (port) {
         assert.equal(port, 12345);
         const server = router.tcpServer;
