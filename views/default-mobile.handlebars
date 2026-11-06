@@ -1645,7 +1645,7 @@
                 }
                 case 'userinfo': {
                     userinfo = message.userinfo;
-                    QH('p3userName', userinfo.name);
+                    Q('p3userName').textContent = userinfo.name;
                     //updateSiteAdmin();
                     if (serverinfo != null) updateSelf();
                     // The server only accepts account security commands until a second factor is set up, so start there
@@ -1824,7 +1824,7 @@
                 case 'getNotes': {
                     var n = Q('d2devNotes');
                     if (n && (message.id == decodeURIComponent(n.attributes['noteid'].value))) {
-                        if (message.notes) { QH('d2devNotes', decodeURIComponent(message.notes)); } else { QH('d2devNotes', ''); }
+                        n.value = message.notes ? decodeURIComponent(message.notes) : '';
                         var ro = (n.attributes['ro'].value == 'true');
                         if (ro == false) { // If we have permissions, set read/write on this note.
                             n.removeAttribute('readonly');
@@ -1842,9 +1842,9 @@
                             if ((message.err > 0) && (message.err < otpauthErrors.length)) { QH('d2optinfo', otpauthErrors[message.err]); } else { QH('d2optinfo', format("Error #{0}", message.err)); }
                         } else {
                             var secret = message.secret;
-                            if (secret.length == 52) { secret = secret.split(/(.............)/).filter(Boolean).join(' '); }
-                            else if (secret.length == 32) { secret = secret.split(/(....)/).filter(Boolean).join(' '); secret = secret.substring(0, 20) + '<br/>' + secret.substring(20) }
-                            QH('d2optinfo', format("Install" + ' <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" rel="noreferrer noopener" target=_blank>' + "Google Authenticator" + '</a> ' + "or a compatible application, use <a href=\"{0}\" rel=\"noreferrer noopener\" target=_blank> this link</a> or enter the secret below. Then, enter the current 6 digit token to activate 2-Step login.", message.url) + '<br /><br /><div style=width:100%;text-align:center><tt id=d2optsecret secret="' + message.secret + '" style=font-size:15px>' + secret + '</tt><br /><br />Token: <input type=text autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" onkeypress=\"return (event.keyCode == 8) || (event.charCode >= 48 && event.charCode <= 57)\" onkeyup=account_addOtpCheck(event) onkeydown=account_addOtpCheck() maxlength=6 id=d2otpauthinput type=text></div>');
+                            if (secret.length == 52) { secret = EscapeHtml(secret.split(/(.............)/).filter(Boolean).join(' ')); }
+                            else if (secret.length == 32) { secret = secret.split(/(....)/).filter(Boolean).join(' '); secret = EscapeHtml(secret.substring(0, 20)) + '<br/>' + EscapeHtml(secret.substring(20)); } else { secret = EscapeHtml(secret); }
+                            QH('d2optinfo', format("Install" + ' <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" rel="noreferrer noopener" target=_blank>' + "Google Authenticator" + '</a> ' + "or a compatible application, use <a href=\"{0}\" rel=\"noreferrer noopener\" target=_blank> this link</a> or enter the secret below. Then, enter the current 6 digit token to activate 2-Step login.", message.url) + '<br /><br /><div style=width:100%;text-align:center><tt id=d2optsecret secret="' + EscapeHtml(message.secret) + '" style=font-size:15px>' + secret + '</tt><br /><br />Token: <input type=text autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" onkeypress=\"return (event.keyCode == 8) || (event.charCode >= 48 && event.charCode <= 57)\" onkeyup=account_addOtpCheck(event) onkeydown=account_addOtpCheck() maxlength=6 id=d2otpauthinput type=text></div>');
                             QV('idx_dlgOkButton', true);
                             QE('idx_dlgOkButton', false);
                             Q('d2otpauthinput').focus();
@@ -1872,7 +1872,7 @@
                             if (++j % 2) { x += '<tr>'; }
                             var p = '' + message.passwords[i].p;
                             while (p.length < 8) { p = '0' + p; }
-                            if (message.passwords[i].u === true) { x += '<td>' + p.substring(0, 4) + '&nbsp;' + p.substring(4); } else { x += '<td><strike style=color:#BBB>' + p.substring(0, 4) + '&nbsp;' + p.substring(4); + '</strike>'; }
+                            if (message.passwords[i].u === true) { x += '<td>' + EscapeHtml(p.substring(0, 4)) + '&nbsp;' + EscapeHtml(p.substring(4)); } else { x += '<td><strike style=color:#BBB>' + EscapeHtml(p.substring(0, 4)) + '&nbsp;' + EscapeHtml(p.substring(4)); + '</strike>'; }
                         }
                     } else {
                         x += '<tr><td>' + "No Active Tokens";
@@ -2516,7 +2516,7 @@
             var x;
             if (userinfo.phone != null) {
                 x = '<table style=width:100%><tr><td style=width:56px><img src="images/phone80.png" style=padding:8px>';
-                x += '<td style=text-align:center><div style=padding:6px>' + "Verified phone number" + '</div><div style=font-size:20px>' + userinfo.phone + '</div>';
+                x += '<td style=text-align:center><div style=padding:6px>' + "Verified phone number" + '</div><div style=font-size:20px>' + EscapeHtml(userinfo.phone) + '</div>';
                 x += '<div style=margin:10px><label><input id=d2delPhone type=checkbox onclick=account_managePhoneRemoveValidate() />' + "Remove phone number" + '</label></div>';
                 setDialogMode(2, "Phone Notifications", 3, account_managePhoneRemove, x);
                 account_managePhoneRemoveValidate();
@@ -2559,7 +2559,7 @@
                 var z = '<select id=d2langselect style=width:180px><option value="*">' + "User browser value" + '</option>';
                 for (var i in serverinfo.languages) {
                     var lang = serverinfo.languages[i];
-                    z += '<option value="' + lang + '"' + ((userinfo.lang == lang)?' selected':'') + '>' + lang + ' - ' + (loclist[lang]?loclist[lang]:loclistex[lang]) + '</option>';
+                    z += '<option value="' + EscapeHtml(lang) + '"' + ((userinfo.lang == lang)?' selected':'') + '>' + EscapeHtml(lang) + ' - ' + (loclist[lang]?loclist[lang]:loclistex[lang]) + '</option>';
                 }
                 z += '</select>';
                 y += addHtmlValue("Language", z);
@@ -2649,7 +2649,7 @@
 
         function account_showDeleteAccount() {
             if (xxdialogMode) return;
-            var x = '<form method=post><table style=margin-left:10px><input type=hidden name=action value=deleteaccount /><input type=hidden name=authcookie value=' + authCookie + ' /><tr>';
+            var x = '<form method=post><table style=margin-left:10px><input type=hidden name=action value=deleteaccount /><input type=hidden name=authcookie value="' + EscapeHtml(authCookie) + '" /><tr>';
             x += '<td align=right>' + "Password:" + '</td><td><input id=apassword1 type=password name=apassword1 autocomplete=off onchange=account_validateDeleteAccount() onkeyup=account_validateDeleteAccount() /></td>';
             x += '</tr><tr><td align=right>' + "Password:" + '</td><td><input id=apassword2 type=password name=apassword2 autocomplete=off onchange=account_validateDeleteAccount() onkeyup=account_validateDeleteAccount() /></td>';
             x += '</tr></table><div style=padding:10px;margin-bottom:4px>';
@@ -2780,7 +2780,7 @@
                 if (meshrights == 0xFFFFFFFF) rights = "Full Administrator"; else if (meshrights == 0) rights = "No Rights";
 
                 // Print the mesh information
-                r += '<div style=cursor:pointer onclick=goForward(\'' + i + '\')>';
+                r += '<div style=cursor:pointer onclick=goForward(decodeURIComponent("' + encodeURIComponentEx(i) + '"))>';
                 r += '<div style="float:left;margin-left:4px"><img src="/images/meshicon50.png" width=50 height=50 /></div>';
                 r += '<div class=meshList>';
                 r += '<div><div style=color:black;padding-left:12px;padding-top:2px><b>' + EscapeHtml(meshes[i].name) + '</b></div><div style=padding-left:12px;padding-top:3px;color:black>' + rights + '</div></div>';
@@ -2875,17 +2875,17 @@
                 var h = '';
                 if (f.t != 3) {
                     var title = '';
-                    h = '<div class=filelist file=999><span style=float:right title="' + title + '"></span><span title="' + shortname + '"><div class=fileIcon' + f.t + ' onclick=d3folderset("' + encodeURIComponentEx(f.nx) + '")></div>&nbsp;<a href=# style=cursor:pointer onclick=\'return d3folderset("' + encodeURIComponentEx(f.nx) + '")\'>' + shortname + '</a></span></div>';
+                    h = '<div class=filelist file=999><span style=float:right title="' + title + '"></span><span title="' + shortname + '"><div class=fileIcon' + Number(f.t) + ' onclick=d3folderset("' + encodeURIComponentEx(f.nx) + '")></div>&nbsp;<a href=# style=cursor:pointer onclick=\'return d3folderset("' + encodeURIComponentEx(f.nx) + '")\'>' + shortname + '</a></span></div>';
                 } else {
                     var link = shortname;
                     //if (f.s > 0) { link = "<a rel=\"noreferrer noopener\" target=\"_blank\" href=\"downloadfile.ashx?link=" + encodeURIComponentEx(filetreelinkpath + '/' + f.nx) + "\">" + shortname + "</a>"; }
-                    h = '<div class=filelist file=3><input style=float:left name=fcx class=fcb type=checkbox onchange=d3setActions() value="' + f.nx + '">&nbsp;<span style=float:right>' + EscapeHtml(fsize) + '</span><span title="' + shortname + '"><div class=fileIcon' + f.t + '></div>' + link + '</span></div>';
+                    h = '<div class=filelist file=3><input style=float:left name=fcx class=fcb type=checkbox onchange=d3setActions() value="' + EscapeHtml(f.nx) + '">&nbsp;<span style=float:right>' + EscapeHtml(fsize) + '</span><span title="' + shortname + '"><div class=fileIcon' + Number(f.t) + '></div>' + link + '</span></div>';
                 }
 
                 if (f.t < 3) { html1 += h; } else { html2 += h; }
             }
 
-            if (d3fileoptions.currentFolder) { QH(d3fileoptions.currentFolder, lastFolderName); }
+            if (d3fileoptions.currentFolder) { Q(d3fileoptions.currentFolder).textContent = lastFolderName; }
             QH(d3fileoptions.files, html1 + html2);
             QE(d3fileoptions.folderup, d3filetreelocation.length > 0);
             if (d3fileoptions.func) { d3fileoptions.func(); }
@@ -2970,13 +2970,13 @@
                 var h = '';
                 if (f.t < 3 || f.t == 4) {
                     var right = (f.t == 1 || f.t == 4) ? p5getQuotabar(f) : '';
-                    h = '<div class=filelist file=999><input file=999 style=float:left name=fc class=fcb type=checkbox onchange=p5setActions() value=\'' + EscapeHtml(name) + '\'>&nbsp;<span style=float:right;padding-right:4px>' + right + '</span><span title="' + shortname + '"><div class=fileIcon' + f.t + '></div><a style=cursor:pointer onclick=p5folderset("' + encodeURIComponent(f.nx) + '")>' + shortname + '</a></span></div>';
+                    h = '<div class=filelist file=999><input file=999 style=float:left name=fc class=fcb type=checkbox onchange=p5setActions() value=\'' + EscapeHtml(name) + '\'>&nbsp;<span style=float:right;padding-right:4px>' + right + '</span><span title="' + shortname + '"><div class=fileIcon' + Number(f.t) + '></div><a style=cursor:pointer onclick=p5folderset("' + encodeURIComponent(f.nx) + '")>' + shortname + '</a></span></div>';
                 } else {
                     var link = shortname;
                     var publiclink = '';
-                    if (publicfolder) { publiclink = ' (<a style=cursor:pointer onclick=\'p5showPublicLink("' + publicPath + '/' + f.nx + '")\'>' + "Link" + '</a>)'; }
+                    if (publicfolder) { publiclink = ' (<a style=cursor:pointer onclick=\'p5showPublicLink("' + encodeURIComponentEx(publicPath + '/' + f.nx) + '")\'>' + "Link" + '</a>)'; }
                     if (f.s > 0) { link = '<a rel=\"noreferrer noopener\" target=\"_blank\" href=\"downloadfile.ashx?link=' + encodeURIComponent(filetreelinkpath + '/' + f.nx) + '\">' + shortname + '</a>' + publiclink; }
-                    h = '<div class=filelist file=3><input file=3 style=float:left name=fc class=fcb type=checkbox onchange=p5setActions() value=\'' + EscapeHtml(f.nx) + '\'>&nbsp;<span style=float:right;padding-right:4px>' + EscapeHtml(fsize) + '</span><span title="' + shortname + '"><div class=fileIcon' + f.t + '></div>' + link + '</span></div>';
+                    h = '<div class=filelist file=3><input file=3 style=float:left name=fc class=fcb type=checkbox onchange=p5setActions() value=\'' + EscapeHtml(f.nx) + '\'>&nbsp;<span style=float:right;padding-right:4px>' + EscapeHtml(fsize) + '</span><span title="' + shortname + '"><div class=fileIcon' + Number(f.t) + '></div>' + link + '</span></div>';
                 }
 
                 if (f.t < 3) { html1 += h; } else { html2 += h; }
@@ -3020,10 +3020,10 @@
         function p5getQuotabar(f) {
             while (f.t > 1 && f.t != 4) { f = f.parent; }
             if ((f.t != 1 && f.t != 4) || (f.maxbytes == null)) return '';
-            return getNiceSize(f.maxbytes - f.s) + ' <progress style=height:10px;width:100px value=' + f.s + ' max=' + f.maxbytes + ' />';
+            return getNiceSize(f.maxbytes - f.s) + ' <progress style=height:10px;width:100px value=' + Number(f.s) + ' max=' + Number(f.maxbytes) + ' />';
         }
 
-        function p5showPublicLink(u) { setDialogMode(2, "Public Link", 1, null, '<input type=text style=width:100% value="' + u + '" readonly />'); }
+        function p5showPublicLink(u) { setDialogMode(2, "Public Link", 1, null, '<input id=p5publiclink type=text style=width:100% readonly />'); Q('p5publiclink').value = decodeURIComponent(u); }
 
         var sortorder;
         function p5sort_filename(a, b) { if (a.ln > b.ln) return (1 * sortorder); if (a.ln < b.ln) return (-1 * sortorder); return 0; }
@@ -3066,11 +3066,11 @@
         function p5createfolderEx() { meshserver.send({ action: 'fileoperation', fileop: 'createfolder', path: filetreelocation, newfolder: Q('p5renameinput').value }); }
         function p5deletefile() { var cc = getFileSelCount(), rec = (getFileSelDirCount() > 0) ? '<br /><br /><label><input type=checkbox id=p5recdeleteinput>' + "Recursive delete" + '</label><br>' : '<input type=checkbox id=p5recdeleteinput style=\'display:none\'>'; setDialogMode(2, "Delete", 3, p5deletefileEx, (cc > 1) ? (format("Delete {0} selected items?", cc) + rec) : ("Delete selected item?" + rec)); }
         function p5deletefileEx() { var delfiles = [], checkboxes = document.getElementsByName('fc'); for (var i = 0; i < checkboxes.length; i++) { if (checkboxes[i].checked) { delfiles.push(checkboxes[i].value); } } meshserver.send({ action: 'fileoperation', fileop: 'delete', path: filetreelocation, delfiles: delfiles, rec: Q('p5recdeleteinput').checked }); }
-        function p5renamefile() { var renamefile, checkboxes = document.getElementsByName('fc'); for (var i = 0; i < checkboxes.length; i++) { if (checkboxes[i].checked) { renamefile = checkboxes[i].value; } } setDialogMode(2, "Rename", 3, p5renamefileEx, '<input type=text id=p5renameinput maxlength=64 onkeyup=p5fileNameCheck(event) style=width:100% value="' + renamefile + '" />', { action: 'fileoperation', fileop: 'rename', path: filetreelocation, oldname: renamefile }); focusTextBox('p5renameinput'); p5fileNameCheck(); }
+        function p5renamefile() { var renamefile, checkboxes = document.getElementsByName('fc'); for (var i = 0; i < checkboxes.length; i++) { if (checkboxes[i].checked) { renamefile = checkboxes[i].value; } } setDialogMode(2, "Rename", 3, p5renamefileEx, '<input type=text id=p5renameinput maxlength=64 onkeyup=p5fileNameCheck(event) style=width:100% />', { action: 'fileoperation', fileop: 'rename', path: filetreelocation, oldname: renamefile }); Q('p5renameinput').value = renamefile; focusTextBox('p5renameinput'); p5fileNameCheck(); }
         function p5renamefileEx(b, t) { t.newname = Q('p5renameinput').value; meshserver.send(t); }
         function p5fileNameCheck(e) { var x = isFilenameValid(Q('p5renameinput').value); QE('idx_dlgOkButton', x); if ((x == true) && (e && e.keyCode == 13)) { dialogclose(1); } }
         var isFilenameValid = (function () { var x1 = /^[^\\/:\*\?"<>\|]+$/, x2 = /^\./, x3 = /^(nul|prn|con|lpt[0-9]|com[0-9])(\.|$)/i; return function isFilenameValid(fname) { return x1.test(fname) && !x2.test(fname) && !x3.test(fname) && (fname[0] != '.'); } })();
-        function p5uploadFile() { setDialogMode(2, "Upload File", 3, p5uploadFileEx, '<form method=post enctype=multipart/form-data action=uploadfile.ashx target=fileUploadFrame><input type=text name=link style=display:none id=p5uploadpath value="' + encodeURIComponent(filetreelinkpath) + '" /><input type=file name=files id=p5uploadinput style=width:100% multiple=multiple onchange="updateUploadDialogOk(\'p5uploadinput\')" /><input type=hidden name=authCookie value=' + authCookie + ' /><input type=submit id=p5loginSubmit style=display:none /></form>'); updateUploadDialogOk('p5uploadinput'); }
+        function p5uploadFile() { setDialogMode(2, "Upload File", 3, p5uploadFileEx, '<form method=post enctype=multipart/form-data action=uploadfile.ashx target=fileUploadFrame><input type=text name=link style=display:none id=p5uploadpath value="' + encodeURIComponent(filetreelinkpath) + '" /><input type=file name=files id=p5uploadinput style=width:100% multiple=multiple onchange="updateUploadDialogOk(\'p5uploadinput\')" /><input type=hidden name=authCookie value="' + EscapeHtml(authCookie) + '" /><input type=submit id=p5loginSubmit style=display:none /></form>'); updateUploadDialogOk('p5uploadinput'); }
         function p5uploadFileEx() { Q('p5loginSubmit').click(); }
         function updateUploadDialogOk(x) { QE('idx_dlgOkButton', Q(x).value != ''); }
 
@@ -3488,7 +3488,7 @@
                         //r += getMeshActions(meshes[nodes[i].meshid], meshrights);
 
                         if (meshes[nodes[i].meshid]) {
-                            r += '</span><span id=MxMESH style=cursor:pointer onclick=goForward("' + nodes[i].meshid + '")>' + EscapeHtml(meshes[nodes[i].meshid].name) + '</span>' + extra + '<span id=DevxHeader' + deviceHeaderId + ' style=color:lightgray></span></div>';
+                            r += '</span><span id=MxMESH style=cursor:pointer onclick=goForward(decodeURIComponent("' + encodeURIComponentEx(nodes[i].meshid) + '"))>' + EscapeHtml(meshes[nodes[i].meshid].name) + '</span>' + extra + '<span id=DevxHeader' + deviceHeaderId + ' style=color:lightgray></span></div>';
                             current = nodes[i].meshid;
                         } else {
                             r += '</span><span id=MxMESH><i>' + "Individual Devices" + '</i></span><span id=DevxHeader' + deviceHeaderId + ' style=color:lightgray></span></div>';
@@ -3513,7 +3513,7 @@
                 }
 
                 count++;
-                r += '<div name=xxdevice onclick=goForward(\'' + nodes[i]._id + '\') class=devList1 id=\'' + nodes[i]._id + '\'></div>'; // This is a standin for the device, it gets rendered only if visible.
+                r += '<div name=xxdevice onclick=goForward(decodeURIComponent("' + encodeURIComponentEx(nodes[i]._id) + '")) class=devList1 id="' + EscapeHtml(nodes[i]._id) + '"></div>'; // This is a standin for the device, it gets rendered only if visible.
 
                 // If we are displaying devices by group, put the device in the right group.
                 /*
@@ -3548,7 +3548,7 @@
                         if ((current != '') && (r != '')) { r += '</tr></table>'; }
                         r += '<div><div colspan=3 class=DevSt><span style=float:right>';
                         //r += getMeshActions(mesh, meshrights);
-                        r += '</span><span id=MxMESH style=cursor:pointer onclick=goForward("' + mesh._id + '")>' + EscapeHtml(mesh.name) + '</span></div>';
+                        r += '</span><span id=MxMESH style=cursor:pointer onclick=goForward(decodeURIComponent("' + encodeURIComponentEx(mesh._id) + '"))>' + EscapeHtml(mesh.name) + '</span></div>';
                         if (mesh.mtype == 1) { r += '<div style=padding:10px><i>' + "No Intel&reg; AMT devices in this group"; }
                         if (mesh.mtype > 1) { r += '<div style=padding:10px><i>' + "No devices in this group"; }
                         r += '.</i></div></div>';
@@ -3665,7 +3665,7 @@
                 // Node
                 var icon = node.icon, nodestate = NodeStateStr(node);
                 if (((!node.conn) || (node.conn == 0)) && (node.mtype != 3)) { icon += ' gray'; }
-                div.innerHTML = '<div>' + devNotify + '<div class="i' + icon + ' devList2"></div><div class=devList3><div class=devList4><b>' + name + '</b></div><div class=devList5>' + nodestate + '</div></div></div>';
+                div.innerHTML = '<div>' + devNotify + '<div class="i' + EscapeHtml(icon) + ' devList2"></div><div class=devList3><div class=devList4><b>' + name + '</b></div><div class=devList5>' + nodestate + '</div></div></div>';
             } else {
                 div.innerHTML = ''; // Hide
             }
@@ -3916,7 +3916,7 @@
                 var x = '<table style=width:100%>';
 
                 // Attribute: Mesh
-                if (mesh) { x += addDeviceAttribute('<span>' + "Group" + '</span>', '<a onclick=goForward("' + node.meshid + '") style=cursor:pointer>' + EscapeHtml(meshes[node.meshid].name) + '</a>'); }
+                if (mesh) { x += addDeviceAttribute('<span>' + "Group" + '</span>', '<a onclick=goForward(decodeURIComponent("' + encodeURIComponentEx(node.meshid) + '")) style=cursor:pointer>' + EscapeHtml(meshes[node.meshid].name) + '</a>'); }
 
                 // Attribute: Name
                 if (node.rname != null) { x += addDeviceAttribute('<span>' + "Name" + '</span>', '<span>' + EscapeHtml(node.rname) + '</span>'); }
@@ -3982,7 +3982,7 @@
                         var editUserCredentialsIcon = false;
                         if (node.intelamt.user == null || node.intelamt.user == '') { // If credentials are not set, allow setting them.
                             if ((meshrights & 4) != 0) {
-                                str += ', <i style=color:#FF0000;cursor:pointer title="' + "Edit Intel&reg; AMT credentials" + '" onclick=editDeviceAmtSettings("' + node._id + '")>' + "No Credentials" + '</i>';
+                                str += ', <i style=color:#FF0000;cursor:pointer title="' + "Edit Intel&reg; AMT credentials" + '" onclick=editDeviceAmtSettings(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>' + "No Credentials" + '</i>';
                                 editUserCredentialsIcon = true;
                             } else {
                                 str += ', <i style=color:#FF0000>' + "No Credentials" + '</i>';
@@ -3993,7 +3993,7 @@
                             if ((node.intelamt.warn & 8) != 0) { warn = "Trying Credentials"; }
                             if (warn != null) {
                                 if ((meshrights & 4) != 0) {
-                                    str += ', <i style=color:#FF0000;cursor:pointer title="' + "Edit Intel&reg; AMT credentials" + '" onclick=editDeviceAmtSettings("' + node._id + '")>' + warn + '</i>';
+                                    str += ', <i style=color:#FF0000;cursor:pointer title="' + "Edit Intel&reg; AMT credentials" + '" onclick=editDeviceAmtSettings(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>' + warn + '</i>';
                                     editUserCredentialsIcon = true;
                                 } else {
                                     str += ', <i style=color:#FF0000>' + warn + '</i>';
@@ -4006,7 +4006,7 @@
 
                         str += ' ';
                         if (editUserCredentialsIcon) {
-                            str += '<img src=images/link4.png height=10 width=10 title="' + "Edit Intel&reg; AMT credentials" + '" style=cursor:pointer onclick=editDeviceAmtSettings("' + node._id + '")>';
+                            str += '<img src=images/link4.png height=10 width=10 title="' + "Edit Intel&reg; AMT credentials" + '" style=cursor:pointer onclick=editDeviceAmtSettings(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>';
                         }
                     }
 
@@ -4110,26 +4110,26 @@
 
                 // Show bottom buttons
                 x = '<div style=float:right;font-size:x-small;margin-right:10px>';
-                if ((meshrights & 0x8000) != 0) { x += '<a style=cursor:pointer onclick=p10showDeleteNodeDialog("' + node._id + '")>' + "Delete Device" + '</a>'; }
+                if ((meshrights & 0x8000) != 0) { x += '<a style=cursor:pointer onclick=p10showDeleteNodeDialog(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>' + "Delete Device" + '</a>'; }
                 x += '</div><div style=font-size:x-small>';
                 if (webRelayPort != 0) {
-                    x += '<a onclick=p10WebRouter("' + node._id + '",1,' + (node.httpport ? node.httpport : 80) + ')>' + "HTTP" + ((node.httpport && (node.httpport != 80)) ? '/' + node.httpport : '') + '</a>&nbsp;';
-                    x += '<a onclick=p10WebRouter("' + node._id + '",2,' + (node.httpsport ? node.httpsport : 443) + ')>' + "HTTPS" + ((node.httpsport && (node.httpsport != 443)) ? '/' + node.httpsport : '') + '</a>&nbsp;';
+                    x += '<a onclick=p10WebRouter(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"),1,' + Number(node.httpport ? node.httpport : 80) + ')>' + "HTTP" + ((node.httpport && (node.httpport != 80)) ? '/' + EscapeHtml(node.httpport) : '') + '</a>&nbsp;';
+                    x += '<a onclick=p10WebRouter(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"),2,' + Number(node.httpsport ? node.httpsport : 443) + ')>' + "HTTPS" + ((node.httpsport && (node.httpsport != 443)) ? '/' + EscapeHtml(node.httpsport) : '') + '</a>&nbsp;';
                 }
 
                 // noVNC link
                 if ((((connectivity & 1) != 0) || (node.mtype == 3)) && (node.agent) && ((meshrights & 8) != 0) && ((features & 0x20000000) == 0)) {
-                    x += '<a id=rfbLink onclick=p10rfb("' + node._id + '")>' + "Web-VNC" + '</a>&nbsp;';
+                    x += '<a id=rfbLink onclick=p10rfb(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>' + "Web-VNC" + '</a>&nbsp;';
                 }
 
                 // MSTSC.js link
                 if ((((connectivity & 1) != 0) || (node.mtype == 3)) && (node.agent) && ((meshrights & 8) != 0) && ((features & 0x40000000) == 0)) {
-                    x += '<a id=mstscLink onclick=p10mstsc("' + node._id + '")>' + "Web-RDP" + '</a>&nbsp;';
+                    x += '<a id=mstscLink onclick=p10mstsc(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>' + "Web-RDP" + '</a>&nbsp;';
                 }
 
                 // SSH link
                 if ((features2 & 0x200) && (((connectivity & 1) != 0) || (node.mtype == 3)) && (node.agent) && ((meshrights & 8) != 0)) {
-                    x += '<a id=sshLink onclick=p10ssh("' + node._id + '")>' + "Web-SSH" + '</a>&nbsp;';
+                    x += '<a id=sshLink onclick=p10ssh(decodeURIComponent("' + encodeURIComponentEx(node._id) + '"))>' + "Web-SSH" + '</a>&nbsp;';
                 }
 
                 //if (mesh.mtype == 2) x += '<a style=cursor:pointer onclick=p10showNodeNetInfoDialog("' + node._id + '")>Interfaces</a>&nbsp;';
@@ -4151,7 +4151,7 @@
                 // Set the node icon
                 var icon = node.icon;
                 if (((!node.conn) || (node.conn == 0)) && (node.mtype != 3)) { icon += ' gray'; }
-                QH('MainComputerImage', '<div class="i' + icon + '"></div>');
+                QH('MainComputerImage', '<div class="i' + EscapeHtml(icon) + '"></div>');
 
                 // Request the power timeline
                 if ((powerTimelineNode != currentNode._id) && (powerTimelineReq != currentNode._id)) {
@@ -5004,7 +5004,7 @@
 
         function updateDeskShortcutKeys() {
             var x = '<div class="menuButton" onclick="deskMenuButton(-1)">' + "Customize" + '</div>';
-            for (var i in deskKeyboardShortcuts) { x += '<div class="menuButton" onclick="deskMenuButton(' + deskKeyboardShortcuts[i] + ')">' + keyShortcutTotext(deskKeyboardShortcuts[i]) + '</div>'; }
+            for (var i in deskKeyboardShortcuts) { x += '<div class="menuButton" onclick="deskMenuButton(' + deskKeyboardShortcuts[i] + ')">' + EscapeHtml(keyShortcutTotext(deskKeyboardShortcuts[i])) + '</div>'; }
             QH('deskButtonMenu', x);
         }
 
@@ -5059,7 +5059,7 @@
         function deskUpdateShortcutList() {
             var x = '';
             for (var i in deskKeyboardShortcuts) {
-                var kt = keyShortcutTotext(deskKeyboardShortcuts[i]), orderButtons = '';
+                var kt = EscapeHtml(keyShortcutTotext(deskKeyboardShortcuts[i])), orderButtons = '';
                 if (i != (deskKeyboardShortcuts.length - 1)) { orderButtons += '<img width=8 height=8 style=float:right;cursor:pointer;padding:3px src="images/c2.png" onclick=deskCustomizeKeyDown(' + deskKeyboardShortcuts[i] + ')>'; }
                 if (i != 0) { orderButtons += '<img width=8 height=8 style=float:right;cursor:pointer;padding:3px src="images/c3.png" onclick=deskCustomizeKeyUp(' + deskKeyboardShortcuts[i] + ')>'; }
                 x += '<div style="width:100%;background-color:#AAA;border-radius:4px;margin-bottom:4px;padding:4px;text-align:left;box-sizing:border-box" value=' + deskKeyboardShortcuts[i] + '>' + kt + '<img width=10 height=10 style=float:right;cursor:pointer;padding:2px;margin-left:8px src="images/trash.png" onclick=removeDeskCustomizeKey(' + deskKeyboardShortcuts[i] + ')>' + orderButtons + '</div>';
@@ -5371,7 +5371,7 @@
         function deskSelectScreens() {
             if (xxdialogMode || desktop == null || desktop.State != 3) return;
             var x = '', info = desktop.m.displays;
-            for (var i in info) { x += '<option value=' + i + ' ' + ((desktop.m.selectedDisplay == i) ? ' selected' : '') + '>' + info[i] + '</option>'; }
+            for (var i in info) { x += '<option value="' + EscapeHtml(i) + '" ' + ((desktop.m.selectedDisplay == i) ? ' selected' : '') + '>' + EscapeHtml(info[i]) + '</option>'; }
             x = addHtmlValue4("Screen", '<select style=width:100% id=deskdisplays>' + x + '</select>');
             setDialogMode(2, "Screen Selection", 3, deskSelectScreensEx, x);
         }
@@ -6392,7 +6392,7 @@
                     h = '<div class=filelist file=999><div class=filelistrow><input file=999 style="flex-shrink:0" name=fd class=fcb type=checkbox onchange=p13setActions() value=\'' + EscapeHtml(f.nx) + '\'>&nbsp;<div class="fileIcon' + (f.dt == 'REMOVABLE' ? 5 : (f.dt == 'CDROM' ? 6 : f.t)) + '" style="flex-shrink:0;margin-top:0"></div>&nbsp;<div class=filelistcontent><div class=filelistname><a style=cursor:pointer onclick=p13folderset("' + encodeURIComponent(f.nx) + '")>' + displayname + '</a></div><div class=filelistmeta>' + fdatestr + EscapeHtml(fsize) + '</div></div></div></div>';
                 } else {
                     var truncname = p13truncateName(name);
-                    var link = '<a style=cursor:pointer onclick=\"p13downloadfile(\'' + encodeURIComponentEx(newlinkpath + '/' + name) + '\',\'' + encodeURIComponentEx(name) + '\',' + f.s + ')\">' + truncname + '</a>';
+                    var link = '<a style=cursor:pointer onclick=\"p13downloadfile(\'' + encodeURIComponentEx(newlinkpath + '/' + name) + '\',\'' + encodeURIComponentEx(name) + '\',' + Number(f.s) + ')\">' + truncname + '</a>';
                     if (f.s == 0) { link = truncname; }
                     h = '<div class=filelist file=3><div class=filelistrow><input file=3 style="flex-shrink:0" name=fd class=fcb type=checkbox onchange=p13setActions() value=\'' + EscapeHtml(f.nx) + '\'>&nbsp;<div class="fileIcon' + f.t + '" style="flex-shrink:0;margin-top:0"></div>&nbsp;<div class=filelistcontent><div class=filelistname>' + link + '</div><div class=filelistmeta>' + fdatestr + EscapeHtml(fsize) + '</div></div></div></div>';
                 }
@@ -7785,7 +7785,7 @@
                 setDialogMode(2, "Edit Device Group", 1, null, "No relay devices available.");
             } else {
                 var relayDevices2 = [];
-                for (var i in relayDevices) { relayDevices2.push('<option value="' + (relayDevices[i]._id + '"' + ((currentMesh.relayid == relayDevices[i]._id) ? ' selected' : '')) + '>' + EscapeHtml(relayDevices[i].name) + '</option>'); }
+                for (var i in relayDevices) { relayDevices2.push('<option value="' + (EscapeHtml(relayDevices[i]._id) + '"' + ((currentMesh.relayid == relayDevices[i]._id) ? ' selected' : '')) + '>' + EscapeHtml(relayDevices[i].name) + '</option>'); }
                 var x = addHtmlValue("Relay Device", '<div style=width:170px><select id=d2devrelay style=width:100%>' + relayDevices2.join('') + '</select></div>');
                 setDialogMode(2, "Edit Device Group", 3, p20editmeshrelayEx, x);
             }
@@ -7819,8 +7819,8 @@
             var x = '<div style=text-align:center><p>' + "Install the MeshCentral Agent on your Android device. Once installed, click the pairing link to connect your device to this server." + '</p>';
             x += '<p><a rel=\"noreferrer noopener\" target=_blank href=\"https://play.google.com/store/apps/details?id=com.meshcentral.agent2\"><img style=cursor:pointer src=\"images/google-play-140.png\" width=140 srcset=\"images/google-play-280.png 2x\" /></a></p>';
             x += '<p><a rel=\"noreferrer noopener\" target=_blank href=\"https://www.amazon.co.uk/gp/product/B097Z4Q7SK/\"><img style=cursor:pointer src=\"images/amazon-appstore-140.png\"  width=140 srcset=\"images/amazon-appstore-280.png 2x\" /></a></p>';
-            x += '<p><a rel=\"noreferrer noopener\" target=_blank href="meshagents?id=14' + (urlargs.key?('&key=' + urlargs.key):'') + '" title="' + "APK version of the MeshAgent" + '">' + "Android APK" + '</a></p>';
-            x += '<p><a href="' + serverinfo.magenturl + ',' + serverinfo.agentCertHash + ',' + currentMesh._id.split('/')[2] + '"><b>' + "Device Pairing Link" + '</b></a></p></div>';
+            x += '<p><a rel=\"noreferrer noopener\" target=_blank href="meshagents?id=14' + (urlargs.key?('&key=' + encodeURIComponent(urlargs.key)):'') + '" title="' + "APK version of the MeshAgent" + '">' + "Android APK" + '</a></p>';
+            x += '<p><a href="' + EscapeHtml(serverinfo.magenturl + ',' + serverinfo.agentCertHash + ',' + currentMesh._id.split('/')[2]) + '"><b>' + "Device Pairing Link" + '</b></a></p></div>';
             setDialogMode(2, "Android Installation", 1, null, x);
         }
 
@@ -7993,7 +7993,7 @@
                     }
 
                     r += '<div title="' + format("Occured at {0}", printDateTime(d)) + '" id="notifyx' + n.id + '" class=notification style="cursor:pointer;border-top:1px solid ' + ((r == '') ? 'transparent' : 'orange') + '">';
-                    if (icon) { r += '<div class=j' + icon + ' onclick="notificationSelected(' + n.id + ')" style=margin:5px;float:left></div>'; }
+                    if (icon) { r += '<div class=j' + Number(icon) + ' onclick="notificationSelected(' + n.id + ')" style=margin:5px;float:left></div>'; }
                     r += '<div onclick="notificationDelete(' + n.id + ')" class=unselectable title="' + "Clear this notification" + '" style=margin:5px;float:right;color:orange><b>X</b></div><div onclick="notificationSelected(' + n.id + ')" style=margin:5px>' + t + EscapeHtml(n.text) + '</div><div style=margin-left:5px;margin-bottom:5px;color:gray;font-size:10px>' + printDateTime(d) + '</div></div>';
                 }
             }
