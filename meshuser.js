@@ -231,7 +231,7 @@ module.exports.CreateMeshUser = function (parent, db, ws, req, args, domain, use
         delete obj.ws.clientIp;
         delete obj.ws.sessionId;
         delete obj.ws.HandleEvent;
-        obj.ws.removeAllListeners(['message', 'close', 'error']);
+        ['message', 'close', 'error'].forEach(function (eventName) { obj.ws.removeAllListeners(eventName); });
 
         obj.ws.xclosed = 11; // DEBUG
     };
