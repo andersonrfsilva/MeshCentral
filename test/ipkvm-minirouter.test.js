@@ -35,7 +35,8 @@ function createFixture(onReady, synchronousClose) {
         if (name === 'ws') { return WebSocket; }
         return localRequire(name);
     }, x);
-    assert.deepEqual(Object.keys(m.exports), ['CreateIPKVMManager']);
+    // Plan 015 made the module export its TLS helpers too; only the manager factory matters here.
+    assert.equal(typeof m.exports.CreateIPKVMManager, 'function');
     const parent = { parent: {
         debug: function () {},
         encodeCookie: function () { return 'test-cookie'; },
