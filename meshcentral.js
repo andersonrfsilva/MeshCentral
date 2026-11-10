@@ -82,6 +82,9 @@ function CreateMeshCentralServer(config, args) {
     function getCurrentVersion() { try { obj.currentVer = JSON.parse(obj.fs.readFileSync(obj.path.join(__dirname, 'package.json'), 'utf8')).version; } catch (ex) { } return obj.currentVer; } // Fetch server version
     getCurrentVersion();
 
+    // Load Windows load average module if on Windows
+    if (process.platform === 'win32') try { require('loadavg-windows'); } catch (ex) { }
+
     // Setup the default configuration and files paths
     if ((__dirname.endsWith('/node_modules/meshcentral')) || (__dirname.endsWith('\\node_modules\\meshcentral')) || (__dirname.endsWith('/node_modules/meshcentral/')) || (__dirname.endsWith('\\node_modules\\meshcentral\\'))) {
         obj.parentpath = obj.path.join(__dirname, '../..');
@@ -1483,9 +1486,6 @@ function CreateMeshCentralServer(config, args) {
     // Time to start the server of real.
     obj.StartEx1b = async function () {
         var i;
-
-        // Add NodeJS version warning if needed
-        if (Number(process.version.match(/^v(\d+\.\d+)/)[1]) < 20) { addServerWarning("MeshCentral will require Node v20 or above in the future, your current version is " + process.version + "."); }
 
         // Setup certificate operations
         obj.certificateOperations = require('./certoperations.js').CertificateOperations(obj);
@@ -4391,8 +4391,8 @@ var meshserver = null;
 var childProcess = null;
 var previouslyInstalledModules = {};
 function mainStart() {
-    // Check the NodeJS is version 16 or better.
-    if (Number(process.version.match(/^v(\d+\.\d+)/)[1]) < 16) { console.log("MeshCentral requires Node v16 or above, current version is " + process.version + "."); return; }
+    // Check the NodeJS is version 22.21.1 or better.
+    if (!common.versionAtLeast(process.versions.node, '22.21.1')) { console.log("MeshCentral requires Node v22.21.1 or above, current version is " + process.version + "."); return; }
 
     // If running within the node_modules folder, move working directory to the parent of the node_modules folder.
     if (__dirname.endsWith('\\node_modules\\meshcentral') || __dirname.endsWith('/node_modules/meshcentral')) { process.chdir(require('path').join(__dirname, '..', '..')); }

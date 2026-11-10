@@ -1,4 +1,4 @@
-﻿/**
+/**
 * @description MeshCentral Common Library
 * @author Ylian Saint-Hilaire
 * @copyright Intel Corporation 2018-2022
@@ -693,3 +693,10 @@ module.exports.decodeCookieAESSHA = function (cookie, key, timeout, encoding, de
         return o;
     } catch (ex) { debug('cookie', 'ERR: Bad AESSHA cookie due to exception: ' + ex); return null; }
 };
+
+// Check number is at least above
+module.exports.versionAtLeast = function (cur, min) {
+    const a = cur.split('.').map(Number), b = min.split('.').map(Number);
+    for (let i = 0; i < 3; i++) { const x = a[i] || 0, y = b[i] || 0; if (x !== y) return x > y; }
+    return true;
+}

@@ -1235,8 +1235,8 @@
                         </div>
                         <div id="deskarea4Icons" class="d-flex ms-auto align-items-center">
                             <span id=DeskMonitorSelectionSpan></span>
-                            <span id="DeskLatency" style="width:70px" class="text-center" title="Desktop Session Latency"></span>
-                            <span id="DeskTimer" style="width:70px" class="text-center" title="Session time"></span>
+                            <span id="DeskLatency" style="width:70px" class="text-end me-1" title="Desktop Session Latency"></span>
+                            <span id="DeskTimer" style="width:70px" class="text-start" title="Session time"></span>
                             <input id=DeskToolsButton type=button class="btn btn-primary btn-sm mx-1" value=Tools title="Toggle tools view" onkeypress="return false" onkeydown="return false" onclick="toggleDeskTools()" />
                             <span id=DeskGuestShareButton title="Share the device with a guest" role="button">
                                 <i class="fa-solid fa-fw fa-share-nodes" id=DeskInputUnLockedButtonImage onclick=showShareDevice()></i>
@@ -1425,6 +1425,7 @@
                                         style="display:none" />
                                 </div>
                                 <div class="d-flex align-items-center ms-auto">
+                                    <span id="TermLatency" class="me-1" title="Terminal Session Latency"></span>
                                     <span id="TermTimer" title="Session time"></span>&nbsp;
                                     <span id="terminalSettingsButtons" style="display:none">
                                         <input id="id_tcrbutton" type="button" onkeypress="return false"
@@ -4122,7 +4123,7 @@
                             var secret = EscapeHtml(message.secret);
                             if (secret.length == 52) { secret = secret.split(/(.............)/).filter(Boolean).join(' '); }
                             else if (secret.length == 32) { secret = secret.split(/(....)/).filter(Boolean).join(' '); secret = secret.substring(0, 20) + '<br/>' + secret.substring(20) }
-                            QH('d2optinfo', '<table><tr><td style=vertical-align:top>' + format("Install" + ' <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" rel="noreferrer noopener" target=_blank>' + "Google Authenticator" + '</a> ' + "or a compatible application and scan the barcode, use <a href=\"{0}\" rel=\"noreferrer noopener\" target=_blank>this link</a> or enter the secret. Then, enter the current 6 digit token below to activate 2-Step login.", message.url) + '<br /><br />' + 'Secret <img src=images/link4.png height=10 width=10 title="' + "Copy Secret to clipboard" + '" style=cursor:pointer onclick=d2CopySecretToClip()>' + '<br /><tt id=d2optsecret secret="' + EscapeHtml(message.secret) + '" style=font-size:12px>' + secret + '</tt><br /><br /></td><td style=width:1px;vertical-align:top><a href="' + EscapeHtml(message.url) + '" rel="noreferrer noopener" target=_blank><div id="qrcode" class="auth-app-qrcode"></div></a></td><tr><td colspan=2 style="text-align:center;border-top:1px solid black"><br />' + "Enter the token here for 2-step login:" + ' <input type=text autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" onkeypress="return (event.keyCode == 8) || (event.charCode >= 48 && event.charCode <= 57)" onkeyup=account_addOtpCheck(event) onkeydown=account_addOtpCheck() maxlength=6 id=d2otpauthinput type=text></td></table>');
+                            QH('d2optinfo', '<table><tr><td style=vertical-align:top>' + format("Install" + ' <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" rel="noreferrer noopener" target=_blank>' + "Google Authenticator" + '</a> ' + "or a compatible application and scan the barcode, use <a href=\"{0}\" rel=\"noreferrer noopener\" target=_blank>this link</a> or enter the secret. Then, enter the current 6 digit token below to activate 2-Step login.", message.url) + '<br /><br />' + 'Secret <img src=images/link4.png height=10 width=10 title="' + "Copy Secret to clipboard" + '" style=cursor:pointer onclick=d2CopySecretToClip()>' + '<br /><tt id=d2optsecret secret="' + EscapeHtml(message.secret) + '" style=font-size:12px>' + secret + '</tt><br /><br /></td><td style=width:1px;vertical-align:top><a href="' + EscapeHtml(message.url) + '" rel="noreferrer noopener" target=_blank><div id="qrcode" class="auth-app-qrcode"></div></a></td><tr><td colspan=2 style="text-align:center;border-top:1px solid black"><br />' + "Enter the token here for 2-step login:" + ' <input type=text autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" onkeypress="return (event.keyCode == 8) || (event.charCode >= 48 && event.charCode <= 57)" onkeyup=account_addOtpCheck(event) onkeydown=account_addOtpCheck() onpaste="return account_addOtpPaste()" maxlength=6 id=d2otpauthinput type=text></td></table>');
                             new QRCode(Q('qrcode'), { text: message.url, width: 128, height: 128, colorDark: '#000000', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.H });
                             QV('idx_dlgOkButton', true);
                             QE('idx_dlgOkButton', false);
@@ -11187,7 +11188,7 @@
                     if (desktopsettings.swapmouse) { desktop.m.SwapMouse = desktopsettings.swapmouse; }
                     if (desktopsettings.rmw) { desktop.m.ReverseMouseWheel = desktopsettings.rmw; }
                     if (desktopsettings.remotekeymap == true) { desktop.m.remoteKeyMap = desktopsettings.remotekeymap; }
-                    //desktop.m.onDisplayinfo = deskDisplayInfo;
+                    desktop.m.onDisplayinfo = deskDisplayInfo;
                     desktop.m.onScreenSizeChange = deskAdjust;
                     if (document.body.classList.contains('is-mobile')) {
                         desktop.m.GetPositionOfControl = function(canvas) {
@@ -11554,7 +11555,7 @@
             // Desktop
             var latencyStr = '', seconds = 0;
             if (desktop && desktop.startTime) {
-                if (desktop.latency && (desktop.latency.current >= 0)) { latencyStr = format('{0} ms', desktop.latency.current); }
+                if (desktop.latency && (desktop.latency.current >= 0)) { latencyStr = format('{0} ms, ', desktop.latency.current); }
                 seconds = Math.floor((new Date() - desktop.startTime) / 1000);
                 QH('DeskTimer', zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
                 QH('DeskLatency', latencyStr);
@@ -11590,10 +11591,11 @@
             // Terminal
             seconds = 0;
             if (terminal && terminal.startTime) {
-                if (terminal.latency && (terminal.latency.current >= 0)) { latencyStr = format('{0} ms, ', terminal.latency.current); }
+                QH('TermLatency', (terminal.latency && (terminal.latency.current >= 0)) ? format('{0} ms, ', terminal.latency.current) : '');
                 seconds = Math.floor((new Date() - terminal.startTime) / 1000);
-                QH('TermTimer', latencyStr + zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
+                QH('TermTimer', zeroPad(Math.floor(seconds / 3600), 2) + ':' + zeroPad((Math.floor(seconds / 60) % 60), 2) + ':' + zeroPad((seconds % 60), 2));
             } else {
+                QH('TermLatency', '');
                 QH('TermTimer', '');
             }
 
@@ -13775,9 +13777,19 @@
             return item.type || "Value";
         }
 
+        function p9compareRegistryNames(a, b) {
+            var an = String(a || '').toLowerCase(), bn = String(b || '').toLowerCase();
+            if ((an.length > 0) && (bn.length > 0)) {
+                var ar = (an.charAt(0) == '_') ? 0 : ((an.charCodeAt(0) >= 48) && (an.charCodeAt(0) <= 57) ? 1 : 2);
+                var br = (bn.charAt(0) == '_') ? 0 : ((bn.charCodeAt(0) >= 48) && (bn.charCodeAt(0) <= 57) ? 1 : 2);
+                if (ar != br) { return ar - br; }
+            }
+            return (an < bn) ? -1 : ((an > bn) ? 1 : 0);
+        }
+
         function p9canEditValue(item) {
             if ((item == null) || (item.kind != 'value')) return false;
-            return ((item.type == 'REG_SZ') || (item.type == 'REG_EXPAND_SZ') || (item.type == 'REG_DWORD') || (item.type == 'REG_QWORD'));
+            return ((item.type == 'REG_SZ') || (item.type == 'REG_EXPAND_SZ') || (item.type == 'REG_MULTI_SZ') || (item.type == 'REG_DWORD') || (item.type == 'REG_QWORD'));
         }
 
         function p9canDeleteSelection(items) {
@@ -13791,7 +13803,7 @@
         }
 
         function p9getWritableRegistryTypes() {
-            return ['REG_SZ', 'REG_EXPAND_SZ', 'REG_DWORD', 'REG_QWORD'];
+            return ['REG_SZ', 'REG_EXPAND_SZ', 'REG_MULTI_SZ', 'REG_DWORD', 'REG_QWORD'];
         }
 
         function p9renderRegistryTypeOptions(selectedType) {
@@ -13962,11 +13974,11 @@
         function p9editRegistryValue() {
             var item = p9getSelectedItem();
             if ((item == null) || (item.kind != 'value')) return false;
-            if (p9canEditValue(item) == false) { messagebox("Registry", "Editing is currently enabled only for REG_SZ, REG_EXPAND_SZ, REG_DWORD and REG_QWORD."); return false; }
+            if (p9canEditValue(item) == false) { messagebox("Registry", "Editing is currently enabled only for REG_SZ, REG_EXPAND_SZ, REG_MULTI_SZ, REG_DWORD and REG_QWORD."); return false; }
             var x = '<div style=margin-bottom:8px><b>' + "Path" + ':</b> ' + EscapeHtml(p9getSelectedFullPath()) + '</div>';
             x += '<div style=margin-bottom:4px><b>' + "Name" + '</b></div><input type=text id=p9registryValueNameEditInput maxlength=255 value="' + EscapeHtml(item.displayName) + '" readonly=readonly style=width:100%;background-color:#EEE />';
             x += '<div style="margin-top:8px;margin-bottom:4px"><b>' + "Type" + '</b></div><select id=p9registryValueTypeEditInput onchange=p9registryValueEditCheck() style=width:100%>' + p9renderRegistryTypeOptions(item.type) + '</select>';
-            if (item.type != 'REG_SZ' && item.type != 'REG_EXPAND_SZ' && item.type != 'REG_DWORD' && item.type != 'REG_QWORD') { x += '<div style="margin-top:6px;color:#666">' + "This type is currently shown as read-only." + '</div>'; }
+            if (p9canEditValue(item) == false) { x += '<div style="margin-top:6px;color:#666">' + "This type is currently shown as read-only." + '</div>'; }
             x += '<textarea id=p9registryValueEditInput onkeyup=p9registryValueEditCheck(event) style=width:100%;height:140px;resize:none>' + EscapeHtml(item.value || '') + '</textarea>';
             xxdialogButtons = 3;
             setModalContent('xxAddAgent', "Edit Registry Value", x);
@@ -14040,7 +14052,8 @@
         }
 
         function p9renderRegistryRow(kind, name, type, value, funcName, encodedName, rawName, hive, path) {
-            var item = { kind: kind, hive: hive, path: path, rawName: (rawName || name), displayName: name, type: type, value: value, id: p9selectionId(kind, hive, path, rawName || name) };
+            var itemRawName = (rawName == null) ? name : rawName;
+            var item = { kind: kind, hive: hive, path: path, rawName: itemRawName, displayName: name, type: type, value: value, id: p9selectionId(kind, hive, path, itemRawName) };
             var rowIndex = p9registerRenderedItem(item);
             var checked = (registryCheckedIds[item.id] != null) ? ' checked=checked' : '';
             var icon = ((kind == 'value') ? '<img src="images/key12.png" style="float:left;margin-top:2px;margin-right:4px" width=12 height=12 />' : '<div class=fileIcon2' + ((funcName != null) ? (' onclick=' + funcName + '("' + encodedName + '")') : '') + '></div>');
@@ -14064,9 +14077,13 @@
             if (data.action == 'listroots') {
                 registryRoots = data.roots || [];
                 var x = '', itemCount = 0;
-                for (var i = 0; i < registryRoots.length; i++) {
+                var sortedRoots = registryRoots.slice().sort(function (a, b) {
+                    return p9compareRegistryNames(a, b);
+                });
+                registryRoots = sortedRoots;
+                for (var i = 0; i < sortedRoots.length; i++) {
                     if (itemCount == 0) { x = p9renderRegistryHeader(); }
-                    x += p9renderRegistryRow('hive', registryRoots[i], "Hive", '', 'p9openRoot', encodeURIComponentEx(registryRoots[i]), '', registryRoots[i], '');
+                    x += p9renderRegistryRow('hive', sortedRoots[i], "Hive", '', 'p9openRoot', encodeURIComponentEx(sortedRoots[i]), '', sortedRoots[i], '');
                     itemCount++;
                 }
                 if (itemCount == 0) { x = '<div style="padding:8px 10px;color:#666"><i>' + "No registry roots were returned." + '</i></div>'; }
@@ -14081,16 +14098,22 @@
                 p9setCurrentPath(p9getDisplayPath(registryCurrentHive, registryCurrentPath));
                 var x = '', itemCount = 0;
                 if ((data.subkeys != null) && (data.subkeys.length > 0)) {
-                    for (var i = 0; i < data.subkeys.length; i++) {
+                    var sortedSubkeys = data.subkeys.slice().sort(function (a, b) {
+                        return p9compareRegistryNames(a, b);
+                    });
+                    for (var i = 0; i < sortedSubkeys.length; i++) {
                         if (itemCount == 0) { x = p9renderRegistryHeader(); }
-                        x += p9renderRegistryRow('key', data.subkeys[i], 'Key', '', 'p9openSubKey', encodeURIComponentEx(data.subkeys[i]), data.subkeys[i], registryCurrentHive, registryCurrentPath);
+                        x += p9renderRegistryRow('key', sortedSubkeys[i], 'Key', '', 'p9openSubKey', encodeURIComponentEx(sortedSubkeys[i]), sortedSubkeys[i], registryCurrentHive, registryCurrentPath);
                         itemCount++;
                     }
                 }
                 if ((data.values != null) && (data.values.length > 0)) {
-                    for (var j = 0; j < data.values.length; j++) {
+                    var sortedValues = data.values.slice().sort(function (a, b) {
+                        return p9compareRegistryNames(a.name, b.name);
+                    });
+                    for (var j = 0; j < sortedValues.length; j++) {
                         if (itemCount == 0) { x = p9renderRegistryHeader(); }
-                        x += p9renderRegistryRow('value', data.values[j].name, data.values[j].type, data.values[j].value, null, null, data.values[j].rawname, registryCurrentHive, registryCurrentPath);
+                        x += p9renderRegistryRow('value', sortedValues[j].name, sortedValues[j].type, sortedValues[j].value, null, null, sortedValues[j].rawname, registryCurrentHive, registryCurrentPath);
                         itemCount++;
                     }
                 }
@@ -16760,6 +16783,19 @@
             if (e && (e.keyCode == 13) && tokenIsValid) { dialogclose(1); }
         }
 
+        function account_addOtpPaste(e) {
+            // Pasting a Base32 secret (alphanumeric) is otherwise truncated to 6 chars by maxlength=6,
+            // then submitted, which crashes otplib.verifySync() server-side. Strip non-digits here.
+            var el = Q('d2otpauthinput');
+            if (!el) return;
+            var text = '';
+            if (e && e.clipboardData) { text = e.clipboardData.getData('Text'); }
+            else if (window.clipboardData) { text = window.clipboardData.getData('Text'); } // IE
+            el.value = (text || '').replace(/[^0-9]/g, '').substring(0, 6);
+            if (e && e.preventDefault) { e.preventDefault(); }
+            account_addOtpCheck();
+        }
+
         function account_removeOtp() {
             if (xxdialogMode || (userinfo.otpsecret != 1) || ((features & 4096) == 0)) return;
             setModalContent('xxAddAgent', "Authenticator App", "Confirm removal of authenticator application 2-step login?");
@@ -16898,13 +16934,15 @@
         function account_createLoginToken() {
             if (xxdialogMode) return false;
             var y = '', x = "Create a temporary username and password that can be used as alternative login to your account. This is useful for allowing tools or other services to access your account." + '<br /><br />';
-            var options = { 0: "Unlimited", 1: "1 minute", 5: "5 minutes", 10: "10 minutes", 15: "15 minutes", 30: "30 minutes", 45: "45 minutes", 60: "60 minutes", 120: "2 hours", 240: "4 hours", 480: "8 hours", 720: "12 hours", 960: "16 hours", 1440: "24 hours", 2880: "2 days", 5760: "4 days", 10080: "7 days" }
+            var options = { 0: "Unlimited", 1: "1 minute", 5: "5 minutes", 10: "10 minutes", 15: "15 minutes", 30: "30 minutes", 45: "45 minutes", 60: "60 minutes", 120: "2 hours", 240: "4 hours", 480: "8 hours", 720: "12 hours", 960: "16 hours", 1440: "24 hours", 2880: "2 days", 5760: "4 days", 10080: "7 days", 43200: "1 month", 86400: "2 months", 525600: "1 year", 1051200: "2 years" }
             for (var i in options) { y += '<option value=' + i + '>' + options[i] + '</option>'; }
             x += '<div class="form-floating mb-3">';
             x += '<input type=text class="boxsize form-control" id=d2tokenName maxlength="100" placeholder="' + "Token Name" + '" onchange=account_createLoginTokenValidate() onkeyup=account_createLoginTokenValidate()>';
             x += '<label for=d2tokenName>' + "Token Name" + '</label>';
             x += '</div>';
-            x += addHtmlFormFloating("Expire Time", '<select class="boxsize form-select" id=d2tokenExpire>' + y + '</select>')
+            x += addHtmlFormFloating("Expire Time", '<select class="boxsize form-select" id=d2tokenExpire>' + y + '</select>');
+            x += '<div class="form-check mb-3"><input class="form-check-input" type="checkbox" id=d2tokenCustomExpire onchange="account_createLoginTokenToggleCustom();account_createLoginTokenValidate()"><label class="form-check-label" for=d2tokenCustomExpire>' + "Custom expiration" + '</label></div>';
+            x += '<div id=d2tokenCustomExpireDiv style="display:none">' + addHtmlFormFloating("Custom Minutes", '<input type="number" min="1" class="boxsize form-control" id=d2tokenCustomMinutes value="60" onchange=account_createLoginTokenValidate() onkeyup=account_createLoginTokenValidate()>') + '</div>';
 
             setModalContent('xxAddAgent', "Create Login Token", x);
             showModal('xxAddAgentModal', 'idx_dlgOkButton', account_createLoginTokenEx);
@@ -16914,11 +16952,26 @@
         }
 
         function account_createLoginTokenValidate() {
-            QE('idx_dlgOkButton', Q('d2tokenName').value.length > 0);
+            var nameValid = Q('d2tokenName').value.length > 0;
+            var customChecked = Q('d2tokenCustomExpire').checked;
+            var expireValid = true;
+            if (customChecked) { expireValid = parseInt(Q('d2tokenCustomMinutes').value) > 0; }
+            QE('idx_dlgOkButton', nameValid && expireValid);
+        }
+
+        function account_createLoginTokenToggleCustom() {
+            var d = Q('d2tokenCustomExpireDiv');
+            var dd = Q('d2tokenExpire');
+            var checked = Q('d2tokenCustomExpire').checked;
+            if (d) { d.style.display = checked ? 'block' : 'none'; }
+            if (dd) { dd.disabled = checked; }
         }
 
         function account_createLoginTokenEx() {
-            meshserver.send({ action: 'createLoginToken', name: Q('d2tokenName').value, expire: parseInt(Q('d2tokenExpire').value) });
+            var expire = 0;
+            if (Q('d2tokenCustomExpire').checked) { expire = parseInt(Q('d2tokenCustomMinutes').value); }
+            else { expire = parseInt(Q('d2tokenExpire').value); }
+            meshserver.send({ action: 'createLoginToken', name: Q('d2tokenName').value, expire: expire });
             return false;
         }
 
